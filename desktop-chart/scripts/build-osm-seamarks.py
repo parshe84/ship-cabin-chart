@@ -118,7 +118,23 @@ def node_stripes():
     return list(range(0, lo))
 
 
+STRIPE_CACHE = os.path.join(ROOT, '.cache', 'osm-seamark-stripes')
+
+
 def scan_stripe(i):
+    # Each stripe's result is kept on disk, so an interrupted scan resumes where it stopped.
+    done = os.path.join(STRIPE_CACHE, f'{i:05d}.json')
+    if os.path.exists(done):
+        with open(done) as f:
+            return json.load(f)
+    out = scan_stripe_s3(i)
+    with open(done + '.tmp', 'w') as f:
+        json.dump(out, f)
+    os.replace(done + '.tmp', done)
+    return out
+
+
+def scan_stripe_s3(i):
     for attempt in range(6):
         try:
             t = planet().read_stripe(i, columns=['tags', 'lat', 'lon'])
@@ -144,6 +160,7 @@ def extract_orc():
     if os.path.exists(cache):
         with open(cache) as f:
             return [json.loads(line) for line in f]
+    os.makedirs(STRIPE_CACHE, exist_ok=True)
     stripes = node_stripes()
     print(f'scanning {len(stripes)} node stripes of the planet', flush=True)
     nodes = []
@@ -151,7 +168,7 @@ def extract_orc():
     with ThreadPoolExecutor(int(os.environ.get('WORKERS', 128))) as pool:
         for n, part in enumerate(pool.map(scan_stripe, stripes), 1):
             nodes.extend(part)
-            if n % 50 == 0:
+            if n % 50 == 0 or n == len(stripes):
                 print(f'  {n}/{len(stripes)} stripes, {len(nodes)} seamarks ({time.time() - t0:.0f}s)', flush=True)
     os.makedirs(os.path.dirname(cache), exist_ok=True)
     with open(cache, 'w') as f:
@@ -233,11 +250,15 @@ def light_attrs(t, prefix):
     return {k: v for k, v in a.items() if v}
 
 
+# Inland-waterway objects that only clutter a seagoing chart.
+SKIP = {'GATCON', 'DISMAR', 'NOTMRK', 'BRIDGE', 'CRANES', 'BERTHS', 'CHKPNT', 'LOKBSN', 'HRBBSN', 'DRYDOC'}
+
+
 def convert(node):
     t = node['t']
     typ = t.get('seamark:type', '')
     cls = CLASSES.get(typ)
-    if not cls:
+    if not cls or cls in SKIP:
         return []
     g = lambda k: t.get(f'seamark:{typ}:{k}')
     a = {}
