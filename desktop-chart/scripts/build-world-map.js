@@ -1,7 +1,8 @@
 'use strict';
 
 // Builds the bundled offline world chart from Natural Earth 1:10m data (public domain).
-// Usage: npm run build-map   (downloads ~110 MB into .cache/, writes src/maps/world/*.json)
+// Usage: npm run build-map   (downloads ~60 MB into .cache/, writes src/maps/world/*.json)
+// Depths (bathymetry.json) come from scripts/build-bathymetry.py instead.
 
 const fs = require('fs');
 const path = require('path');
@@ -11,11 +12,6 @@ const SOURCE = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/m
 const cacheDir = path.join(__dirname, '..', '.cache', 'naturalearth');
 const outDir = path.join(__dirname, '..', 'src', 'maps', 'world');
 
-const BATHYMETRY = [
-  ['L_0', 0], ['K_200', 200], ['J_1000', 1000], ['I_2000', 2000], ['H_3000', 3000],
-  ['G_4000', 4000], ['F_5000', 5000], ['E_6000', 6000], ['D_7000', 7000],
-  ['C_8000', 8000], ['B_9000', 9000], ['A_10000', 10000],
-];
 
 async function download(name) {
   const file = path.join(cacheDir, `${name}.geojson`);
@@ -48,14 +44,6 @@ async function main() {
   fs.mkdirSync(outDir, { recursive: true });
 
   const SIMPLIFY = '-simplify 25% keep-shapes';
-
-  // Depth bands: every layer is "sea deeper than N metres"; drawn shallow to deep.
-  const bathymetry = { type: 'FeatureCollection', features: [] };
-  for (const [suffix, depth] of BATHYMETRY) {
-    const layer = await shape([`ne_10m_bathymetry_${suffix}`], `${SIMPLIFY} -filter-fields -each "depth=${depth}"`);
-    bathymetry.features.push(...layer.features);
-  }
-  write('bathymetry', bathymetry);
 
   write('land', await shape(['ne_10m_land', 'ne_10m_minor_islands'], `${SIMPLIFY} -filter-fields`));
   write('coastline', await shape(['ne_10m_coastline'], `${SIMPLIFY} -filter-fields`));

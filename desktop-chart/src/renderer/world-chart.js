@@ -1,20 +1,37 @@
 'use strict';
 
-// Offline world nautical chart: Natural Earth 1:10m vectors, sliced with geojson-vt
-// and drawn on canvas tiles. Two looks: neon night and bright day.
+// Offline world nautical chart: Natural Earth 1:10m vectors plus ETOPO1-based isobaths,
+// sliced with geojson-vt and drawn on canvas tiles. Two looks: neon night and bright day.
 
 (function () {
   const EXTENT = 4096;
   const INDEX_MAX_ZOOM = 14; // deeper zooms reuse z14 geometry, scaled up
 
+  // Isobaths in bathymetry.json (see scripts/build-bathymetry.py); 0 = sea surface.
+  const DEPTH_LEVELS = [0, 10, 20, 50, 100, 200, 500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000];
+
+  // Colour for each depth level, interpolated along a ramp of [position 0..1, hex] stops.
+  function depthPalette(stops) {
+    const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+    const out = {};
+    DEPTH_LEVELS.forEach((d, i) => {
+      const t = i / (DEPTH_LEVELS.length - 1);
+      let k = 0;
+      while (k < stops.length - 2 && t > stops[k + 1][0]) k++;
+      const [t0, c0] = stops[k];
+      const [t1, c1] = stops[k + 1];
+      const f = Math.min(1, Math.max(0, (t - t0) / (t1 - t0)));
+      const a = hex(c0), b = hex(c1);
+      out[d] = '#' + a.map((v, j) => Math.round(v + (b[j] - v) * f).toString(16).padStart(2, '0')).join('');
+    });
+    return out;
+  }
+
   const THEMES = {
     night: {
-      depth: {
-        0: '#0a2a40', 200: '#082236', 1000: '#071d2f', 2000: '#061928', 3000: '#051622',
-        4000: '#04131e', 5000: '#04111a', 6000: '#030f17', 7000: '#030d14',
-        8000: '#020b11', 9000: '#02090e', 10000: '#01070b',
-      },
+      depth: depthPalette([[0, '#12506b'], [0.18, '#0c3650'], [0.35, '#082539'], [0.6, '#051624'], [0.8, '#030c18'], [0.9, '#1c0a3e'], [1, '#4a0c72']]),
       contour: 'rgba(0, 229, 255, 0.16)',
+      contourShallow: 'rgba(0, 229, 255, 0.32)',
       ocean: '#01070b',
       land: '#070b12',
       ice: '#0e1824',
@@ -28,12 +45,9 @@
       graticule: 'rgba(0, 229, 255, 0.07)',
     },
     day: {
-      depth: {
-        0: '#c9f1f4', 200: '#a6e4ee', 1000: '#7fcfe6', 2000: '#5db8dc', 3000: '#45a2d2',
-        4000: '#348bc6', 5000: '#2a76b8', 6000: '#2263a8', 7000: '#1c5298',
-        8000: '#174488', 9000: '#133878', 10000: '#0f2d68',
-      },
+      depth: depthPalette([[0, '#e2fafa'], [0.18, '#a9e6ef'], [0.35, '#6cc7e2'], [0.6, '#3487c4'], [1, '#0b2560']]),
       contour: 'rgba(255, 255, 255, 0.35)',
+      contourShallow: 'rgba(20, 90, 140, 0.35)',
       ocean: '#0f2d68',
       land: '#f7f4ed',
       ice: '#ffffff',
@@ -54,7 +68,11 @@
     {
       name: 'bathymetry',
       fill: (p) => P.depth[p.depth] || P.ocean,
-      outline: (p) => (p.depth > 0 ? P.contour : null), // isobaths as thin contour lines
+      // Isobaths as thin contour lines; shallow ones (the ones that matter near a coast) stronger.
+      outline: (p, z) => {
+        if (p.depth <= 0 || (p.depth < 200 && z < 5)) return null;
+        return p.depth <= 200 ? P.contourShallow : P.contour;
+      },
     },
     { name: 'land', fill: () => P.land },
     { name: 'ice', fill: () => P.ice },
@@ -90,7 +108,7 @@
   }
 
   const WorldChartLayer = L.GridLayer.extend({
-    options: { tileSize: 256, maxZoom: 18, attribution: 'Natural Earth' },
+    options: { tileSize: 256, maxZoom: 18, attribution: 'Natural Earth · ETOPO1 depths (NOAA) via Mapzen Terrarium' },
 
     createTile(coords) {
       const size = this.getTileSize();
@@ -100,7 +118,7 @@
       tile.height = size.y * ratio;
       const ctx = tile.getContext('2d');
       ctx.scale(ratio, ratio);
-      ctx.fillStyle = P.ocean;
+      ctx.fillStyle = P.depth[0]; // sea surface; deeper bands are drawn on top
       ctx.fillRect(0, 0, size.x, size.y);
 
       // Zooms deeper than the index: take the ancestor tile and magnify the right part.
@@ -127,7 +145,7 @@
           if (layer.fill) {
             ctx.fillStyle = layer.fill(f.tags);
             ctx.fill('evenodd');
-            const outline = layer.outline && layer.outline(f.tags);
+            const outline = layer.outline && layer.outline(f.tags, coords.z);
             if (outline) {
               ctx.strokeStyle = outline;
               ctx.lineWidth = 0.7;
@@ -233,6 +251,66 @@
     return group;
   }
 
+  // --- Depth lookup: deepest isobath polygon containing a point ---
+
+  let depthPolys = []; // { depth, bbox: [w, s, e, n], rings }
+  let landPolys = [];
+
+  function ringContains(ring, x, y) {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i];
+      const [xj, yj] = ring[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+
+  // Flattens Polygon/MultiPolygon features into { depth, bbox, rings } entries.
+  function indexPolygons(features) {
+    const out = [];
+    for (const f of features) {
+      const g = f.geometry;
+      if (!g) continue;
+      const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+      for (const rings of polys) {
+        let w = 180, s = 90, e = -180, n = -90;
+        for (const [x, y] of rings[0]) {
+          if (x < w) w = x;
+          if (x > e) e = x;
+          if (y < s) s = y;
+          if (y > n) n = y;
+        }
+        out.push({ depth: f.properties && f.properties.depth, bbox: [w, s, e, n], rings });
+      }
+    }
+    return out;
+  }
+
+  function polyContains(p, lat, lon) {
+    const [w, s, e, n] = p.bbox;
+    if (lon < w || lon > e || lat < s || lat > n) return false;
+    if (!ringContains(p.rings[0], lon, lat)) return false;
+    return !p.rings.slice(1).some((h) => ringContains(h, lon, lat));
+  }
+
+  // Returns { from, to } in metres (to = null below the deepest level), { land: true },
+  // or null before the data has loaded.
+  function depthAt(lat, lon) {
+    if (!depthPolys.length) return null;
+    if (landPolys.some((p) => polyContains(p, lat, lon))) return { land: true };
+    for (const p of depthPolys) {
+      if (!polyContains(p, lat, lon)) continue;
+      const i = DEPTH_LEVELS.indexOf(p.depth);
+      return { from: p.depth, to: DEPTH_LEVELS[i + 1] ?? null };
+    }
+    return { from: 0, to: DEPTH_LEVELS[1] };
+  }
+
+  function legend() {
+    return DEPTH_LEVELS.map((d) => ({ depth: d, color: P.depth[d] }));
+  }
+
   // Returns the layers right away; they fill in once `ready` resolves.
   function createWorldChart(map, loadLayer) {
     const chart = new WorldChartLayer();
@@ -241,6 +319,10 @@
     const ready = (async () => {
       for (const layer of LAYERS) {
         const data = JSON.parse(await loadLayer(layer.name));
+        if (layer.name === 'bathymetry') {
+          depthPolys = indexPolygons(data.features).sort((a, b) => b.depth - a.depth);
+        }
+        if (layer.name === 'land') landPolys = indexPolygons(data.features);
         indexes[layer.name] = geojsonvt(data, {
           maxZoom: INDEX_MAX_ZOOM, extent: EXTENT, buffer: 64, tolerance: 2,
         });
@@ -257,8 +339,8 @@
       chart.redraw();
     }
 
-    return { chart, labels, ready, setTheme };
+    return { chart, labels, ready, setTheme, depthAt, legend };
   }
 
-  window.WorldChart = { createWorldChart };
+  window.WorldChart = { createWorldChart, DEPTH_LEVELS };
 })();

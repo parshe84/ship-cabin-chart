@@ -30,10 +30,17 @@ position. **GPX** exports the track for OpenCPN, Navionics, Google Earth and sim
 
 ## Maps
 
-**Built-in world chart, works fully offline.** Made from [Natural Earth](https://www.naturalearthdata.com/)
-1:10m data (public domain):
+**Built-in world chart, works fully offline.**
 
-- ocean depth bands (bathymetry) from 0 to 10,000 m
+**Depths: a general bathymetric chart of the whole World Ocean.** Isobaths at standard chart depths
+**10, 20, 50, 100, 200, 500, 1,000, 2,000 … 10,000 m**, traced from [ETOPO1](https://www.ncei.noaa.gov/products/etopo-global-relief-model)
+(NOAA, 1 arc-minute global relief, public domain) via the [Mapzen Terrarium](https://registry.opendata.aws/terrain-tiles/)
+tiles on AWS Open Data. The HUD shows the **chart depth under the ship**, and the legend shows the depth
+**under the cursor**. Resolution is about 2 km: this is a general chart for overview, not for navigation in
+shallow water.
+
+Everything else comes from [Natural Earth](https://www.naturalearthdata.com/) 1:10m data (public domain):
+
 - land, coastlines, islands, glaciers and ice shelves
 - lakes, rivers, reefs and country borders
 - names of 306 oceans, seas, bays and straits
@@ -47,7 +54,8 @@ they are available, either online or from the local cache. Before a voyage, open
 **Download detailed area**. Every tile you have looked at is cached too. Each download is limited to
 3,000 tiles, as required by the free OSM tile servers' usage policy.
 
-To rebuild the world chart from the latest Natural Earth release, run `npm run build-map`.
+To rebuild the chart: `npm run build-map` (Natural Earth layers) and
+`python3 scripts/build-bathymetry.py` (depths; needs `pip install numpy pillow contourpy shapely`).
 
 ## How to use
 

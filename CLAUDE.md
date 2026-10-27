@@ -11,7 +11,8 @@ The UI is in English.
   - `src/nmea.js` + `test/nmea.test.js`: parser (`npm test`).
   - `src/renderer/world-chart.js`: offline world chart. Natural Earth 1:10m vectors in `src/maps/world/*.json`, sliced with geojson-vt, drawn on canvas; palettes for the `night` and `day` themes.
   - `src/renderer/app.js`: HUD, themes (auto by sun elevation, see `sun.js`), track, labels.
-  - `scripts/build-world-map.js`: rebuilds `src/maps/world` from Natural Earth (`npm run build-map`).
+  - `scripts/build-world-map.js`: rebuilds the Natural Earth layers in `src/maps/world` (`npm run build-map`).
+  - `scripts/build-bathymetry.py`: rebuilds `src/maps/world/bathymetry.json` (isobaths 10…10000 m) from ETOPO1 via Terrarium tiles on S3. `world-chart.js` `DEPTH_LEVELS` must match its `DEPTHS`.
 - Fonts (Space Grotesk, JetBrains Mono) are bundled from `@fontsource-variable` because the app must work offline.
 
 ## Building and checking

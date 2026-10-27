@@ -10,7 +10,11 @@ const world = WorldChart.createWorldChart(map, window.ship.loadWorldLayer);
 world.chart.addTo(map);
 world.labels.addTo(map);
 world.ready
-  .then(() => { $('status-map').textContent = 'World chart · offline · built in'; })
+  .then(() => {
+    $('status-map').textContent = 'World chart · offline · built in';
+    depthLegend.render(world.legend());
+    render();
+  })
   .catch((err) => { $('status-map').textContent = `World chart failed: ${err.message}`; });
 
 // Detailed coastal maps on top when zoomed in: online, or from the download cache.
@@ -33,6 +37,54 @@ L.control.layers(null, {
   'Seamarks (zoom 9+)': seamarks,
 }, { position: 'topleft' }).addTo(map);
 L.control.scale({ metric: true, imperial: true, position: 'bottomleft' }).addTo(map);
+
+// --- Depth legend with a readout of the chart depth under the cursor ---
+
+function formatDepth(d) {
+  if (!d) return { value: '—', unit: '' };
+  if (d.land) return { value: 'Land', unit: '' };
+  if (d.to == null) return { value: `>${d.from.toLocaleString('en-US')}`, unit: 'm' };
+  return { value: `${d.from.toLocaleString('en-US')}–${d.to.toLocaleString('en-US')}`, unit: 'm' };
+}
+
+const LEGEND_TICKS = [0, 10, 50, 200, 1000, 4000, 10000];
+const DepthLegend = L.Control.extend({
+  options: { position: 'bottomleft' },
+  onAdd() {
+    const div = L.DomUtil.create('div', 'depth-legend');
+    div.innerHTML = '<div class="title"><span>Depth, m</span><span>ETOPO1 · general chart</span></div>' +
+      '<div class="swatches"></div><div class="ticks"></div><div class="cursor"></div>';
+    L.DomEvent.disableClickPropagation(div);
+    return div;
+  },
+  render(legend) {
+    const el = this.getContainer();
+    el.querySelector('.swatches').innerHTML = legend.map((l) => `<span style="background:${l.color}"></span>`).join('');
+    const n = legend.length;
+    el.querySelector('.ticks').innerHTML = LEGEND_TICKS
+      .map((d) => `<span style="left:${((legend.findIndex((l) => l.depth === d) + 0.5) / n) * 100}%">${d >= 1000 ? d / 1000 + 'k' : d}</span>`)
+      .join('');
+    // Same ramp for the HUD depth bar.
+    document.body.style.setProperty('--depth-gradient',
+      `linear-gradient(90deg, ${legend.map((l, i) => `${l.color} ${(i / (n - 1)) * 100}%`).join(', ')})`);
+  },
+  setCursor(html) {
+    this.getContainer().querySelector('.cursor').innerHTML = html;
+  },
+});
+const depthLegend = new DepthLegend().addTo(map);
+
+let cursorTimer = null;
+map.on('mousemove', (e) => {
+  if (cursorTimer) return;
+  cursorTimer = setTimeout(() => {
+    cursorTimer = null;
+    const { lat, lng } = e.latlng.wrap();
+    const d = formatDepth(world.depthAt(lat, lng));
+    depthLegend.setCursor(`<b>${d.value}</b> ${d.unit} · ${toDdm(lat, 'N', 'S')} ${toDdm(lng, 'E', 'W')}`);
+  }, 60);
+});
+map.on('mouseout', () => depthLegend.setCursor(''));
 
 // --- Ship marker & track ---
 
@@ -105,6 +157,22 @@ function setNeedle(cog) {
   }
 }
 
+function renderDepth() {
+  const d = state.lat != null ? world.depthAt(state.lat, state.lon) : null;
+  const f = formatDepth(d);
+  $('depth').textContent = f.value;
+  $('depth-unit').textContent = f.unit;
+  const marker = $('depth-bar').querySelector('i');
+  if (d && !d.land) {
+    const levels = WorldChart.DEPTH_LEVELS;
+    const i = levels.indexOf(d.from);
+    marker.style.left = `${((i + 0.5) / levels.length) * 100}%`;
+    marker.style.opacity = 1;
+  } else {
+    marker.style.opacity = 0;
+  }
+}
+
 function render() {
   $('lat').textContent = toDdm(state.lat, 'N', 'S');
   $('lon').textContent = toDdm(state.lon, 'E', 'W');
@@ -113,6 +181,7 @@ function render() {
   $('sats').textContent = state.satellites ?? '—';
   $('time').textContent = state.time ? `${new Date(state.time).toISOString().slice(11, 19)} UTC` : '--:--:-- UTC';
   $('logged').textContent = (loggedMeters / 1852).toFixed(1);
+  renderDepth();
 
   if (state.lat == null) return;
   const pos = [state.lat, state.lon];
@@ -203,6 +272,7 @@ function applyTheme() {
   if (document.body.dataset.theme === theme) return;
   document.body.dataset.theme = theme;
   world.setTheme(theme);
+  depthLegend.render(world.legend());
 }
 
 $('btn-theme').onclick = () => {
