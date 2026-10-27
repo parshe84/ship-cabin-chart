@@ -10,8 +10,8 @@
     "start": "electron .",
     "test": "node --test test/*.test.js",
     "build-map": "node scripts/build-world-map.js",
-    "dist:win": "electron-builder --win portable",
-    "dist:linux": "electron-builder --linux AppImage"
+    "dist:win": "electron-builder --win portable --publish never",
+    "dist:linux": "electron-builder --linux AppImage --publish never"
   },
   "dependencies": {
     "geojson-vt": "4.0.2",
@@ -37,7 +37,13 @@
     },
     "linux": {
       "target": "AppImage",
-      "category": "Utility"
-    }
+      "category": "Utility",
+      "artifactName": "ShipCabinChart-${version}-${arch}.AppImage"
+    },
+    "publish": null
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/parshe84/ship-cabin-chart.git"
   }
 }
