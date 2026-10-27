@@ -11,6 +11,21 @@
   const MAX_LOADED = 80;
   // A cell is drawn from this zoom up, by navigational purpose (1 overview … 6 berthing).
   const BAND_MIN_ZOOM = { 0: 9, 1: 3, 2: 6, 3: 8, 4: 10, 5: 11, 6: 13, 7: 11 };
+  // Built-in OpenStreetMap seamarks (band 0): each object has its own minimum zoom instead of SCAMIN.
+  const BUILTIN_MIN_ZOOM = 6;
+  const show = { enc: true, builtin: true };
+
+  function builtinMinZoom(c, a) {
+    if (c === 'LIGHTS') {
+      const r = num(a.VALNMR) || 0;
+      return r >= 18 ? 6 : r >= 12 ? 8 : r >= 7 ? 10 : 11;
+    }
+    if (c === 'LITVES' || c === 'LITFLT') return 8;
+    if (c.startsWith('BOY') || c.startsWith('BCN')) return 11;
+    if (c === 'WRECKS' || c === 'UWTROC' || c === 'OBSTRN') return 11;
+    if (c === 'HRBFAC' || c === 'ACHARE' || c === 'PILBOP') return 9;
+    return 12;
+  }
 
   const PALETTES = {
     day: {
@@ -62,7 +77,7 @@
   let loadCell = null;
   let onLoaded = () => {};
 
-  function prepare(name, data) {
+  function prepare(name, data, builtin) {
     const areaLines = [];
     const points = [];
     const picks = [];
@@ -78,6 +93,7 @@
         continue;
       }
       if (g.type === 'Point') {
+        if (builtin) p.mz = builtinMinZoom(p.c, p.a || {});
         points.push(f);
         picks.push({ f, kind: 0, x: g.coordinates[0], y: g.coordinates[1] });
         continue;
@@ -167,7 +183,7 @@
     if (!c.loading) {
       c.loading = loadCell(name)
         .then((json) => {
-          c.loaded = prepare(name, JSON.parse(json));
+          c.loaded = prepare(name, JSON.parse(json), c.info.builtin);
           evict();
           return c.loaded;
         })
@@ -193,7 +209,8 @@
     const out = [];
     for (const c of cells.values()) {
       const i = c.info;
-      if (c.failed || !i.bbox || z < (BAND_MIN_ZOOM[i.band] ?? 9)) continue;
+      if (c.failed || !i.bbox || !(i.builtin ? show.builtin : show.enc)) continue;
+      if (z < (i.builtin ? BUILTIN_MIN_ZOOM : BAND_MIN_ZOOM[i.band] ?? 9)) continue;
       const [cw, cs, ce, cn] = i.bbox;
       if (ce < w || cw > e || cn < s || cs > n) continue;
       out.push(c);
@@ -616,6 +633,7 @@
       const a = p.a || {};
       const scamin = num(a.SCAMIN);
       if (scamin && scaleDenom > scamin) continue;
+      if (p.mz && z < p.mz) continue;
       for (const pt of f.geometry) {
         const x = pt[0] * scale, y = pt[1] * scale;
         if (x - offX < -128 || y - offY < -128 || x - offX > 384 || y - offY > 384) continue;
@@ -639,10 +657,29 @@
           }
           case 'LIGHTS':
             drawLight(ctx, a, x, y, z);
-            if (S.lightText && z >= 13) {
+            // Major lights get their characteristic (and name) earlier than minor ones.
+            if (S.lightText && (z >= 13 || (p.mz && z >= p.mz + 3))) {
               const desc = lightDescription(a);
               if (desc && fits(x + 10, y + 4, desc.length * 5.6, 11)) text(ctx, desc, x + 10, y + 10, { size: 9.5 });
+              if (S.text && a.OBJNAM && p.mz && p.mz <= 8 && fits(x + 10, y - 10, a.OBJNAM.length * 5.6, 11)) {
+                text(ctx, a.OBJNAM, x + 10, y - 4, { size: 9.5, italic: true });
+              }
             }
+            break;
+          case 'LITVES': case 'LITFLT':
+            drawBuoy(ctx, { BOYSHP: '7', COLOUR: a.COLOUR || '3' }, x, y);
+            if (S.text && a.OBJNAM && z >= 10 && fits(x + 9, y - 4, a.OBJNAM.length * 5.6, 11)) text(ctx, a.OBJNAM, x + 9, y + 2, { size: 9.5 });
+            break;
+          case 'HRBFAC': case 'SMCFAC':
+            text(ctx, '⚓', x, y, { size: z >= 12 ? 13 : 11, colour: P.chart, align: 'center' });
+            if (S.text && a.OBJNAM && z >= 12 && fits(x + 8, y - 6, a.OBJNAM.length * 5.6, 12)) text(ctx, a.OBJNAM, x + 9, y, { size: 9.5, italic: true });
+            break;
+          case 'ACHARE':
+            text(ctx, '⚓', x, y, { size: 13, colour: P.magenta, align: 'center' });
+            break;
+          case 'PILBOP':
+            simpleMark(ctx, x, y, P.magenta, 'circle');
+            if (z >= 11) text(ctx, 'Pilot', x + 7, y, { size: 9.5, colour: P.magenta });
             break;
           case 'UWTROC': case 'WRECKS': case 'OBSTRN': drawDanger(ctx, p, x, y, z); break;
           case 'FOGSIG':
@@ -713,7 +750,7 @@
   }
 
   const EncLayer = L.GridLayer.extend({
-    options: { tileSize: 256, maxZoom: 18, zIndex: 3, attribution: 'ENC: official S-57 charts (not for navigation without an approved ECDIS)' },
+    options: { tileSize: 256, maxZoom: 18, zIndex: 3, attribution: 'Seamarks © OpenStreetMap contributors (ODbL) · ENC: official S-57 charts · not for navigation' },
 
     createTile(coords, done) {
       const size = this.getTileSize();
@@ -765,7 +802,7 @@
   function loadedCellsAt(lat, lon) {
     const out = [];
     for (const c of cells.values()) {
-      if (!c.loaded) continue;
+      if (!c.loaded || !(c.info.builtin ? show.builtin : show.enc)) continue;
       const [w, s, e, n] = c.info.bbox;
       if (lon >= w && lon <= e && lat >= s && lat <= n) out.push(c);
     }
@@ -856,7 +893,8 @@
       const d = lightDescription(p.a || {});
       if (d) attrs.unshift({ code: '', name: 'Characteristic', value: d });
     }
-    return { code: p.c, name: cls ? cls[1] : p.c, title: (p.a && p.a.OBJNAM) || '', attrs, cell: hit.cell, geometry: ['Point', 'Line', 'Area'][hit.kind] };
+    const cell = hit.cell.startsWith('OSM_') ? 'OpenStreetMap' : hit.cell;
+    return { code: p.c, name: cls ? cls[1] : p.c, title: (p.a && p.a.OBJNAM) || '', attrs, cell, geometry: ['Point', 'Line', 'Area'][hit.kind] };
   }
 
   // --- API ---
@@ -868,12 +906,23 @@
       layer,
       setCells(list) {
         const keep = new Set(list.map((c) => c.name));
-        for (const n of [...cells.keys()]) if (!keep.has(n)) cells.delete(n);
+        for (const [n, c] of [...cells]) if (!c.info.builtin && !keep.has(n)) cells.delete(n);
         for (const info of list) {
           const old = cells.get(info.name);
           if (old && old.info.imported === info.imported) continue;
           cells.set(info.name, { info, loaded: null, loading: null, used: 0 });
         }
+        layer.redraw();
+      },
+      // Built-in seamark squares: [{ name, bbox, features }].
+      setBuiltin(list) {
+        for (const sq of list) {
+          if (!cells.has(sq.name)) cells.set(sq.name, { info: { ...sq, band: 0, builtin: true }, loaded: null, loading: null, used: 0 });
+        }
+        layer.redraw();
+      },
+      setVisible(name, on) {
+        show[name] = on;
         layer.redraw();
       },
       cellCount: () => cells.size,

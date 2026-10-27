@@ -117,6 +117,22 @@ Everything else comes from [Natural Earth](https://www.naturalearthdata.com/) 1:
 
 It covers the whole planet and is sharpest at ocean and regional scale (roughly zoom 1–9).
 
+**Detailed coastline from zoom 8, offline.** From zoom 8 the land is drawn from the OpenStreetMap land
+polygons (built from `natural=coastline`), simplified to about 20 m: harbours, breakwaters, fjords, reclaimed
+land such as Maasvlakte 2 and small islands, for the whole world (`src/maps/land`, 1,480 squares of 5°, ~42 MB).
+Rebuilt with `python3 scripts/build-osm-land.py` from the Daylight Map Distribution on AWS Open Data.
+
+**Seamarks worldwide, offline.** Lights (flare, sectors and characteristic such as `Fl(2) W 15s 20m 15M`, major
+lights from zoom 6), buoys and beacons by shape and colour, wrecks, rocks, obstructions, harbours, marinas,
+anchorages, pilot boarding places, landmarks and more, from the OpenSeaMap tags in OpenStreetMap
+(`src/maps/seamarks`, loaded per 10° square). Click a symbol for its details. They are drawn with the same
+S-52-style symbols as ENC charts and can be switched off in the layers menu. Rebuilt with
+`python3 scripts/build-osm-seamarks.py` (scans the planet file on AWS). The online OpenSeaMap overlay is
+still in the layers menu but off by default.
+
+Both are © OpenStreetMap contributors and available under the ODbL. They are as good as the OSM mapping in
+each area: very detailed in Europe and busy ports, sparser elsewhere.
+
 **Official ENC charts (S-57).** The **ENC** button imports electronic navigational charts from
 hydrographic offices in the unencrypted IHO S-57 format: single cells (`.000` with their `.001…` updates,
 which are applied in order), a whole folder such as an `ENC_ROOT` exchange set, or a `.zip` as downloaded.

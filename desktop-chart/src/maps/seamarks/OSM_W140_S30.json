@@ -1,0 +1,1 @@
+{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-130.095087,-25.068671]},"properties":{"c":"WRECKS","a":{"OBJNAM":"H.M.S. Bounty","CATWRK":"3"},"id":0}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-130.096194,-25.068254]},"properties":{"c":"HRBFAC","a":{},"id":1}}]}

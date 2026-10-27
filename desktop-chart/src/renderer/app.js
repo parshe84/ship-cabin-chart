@@ -8,6 +8,7 @@ map.zoomControl.setPosition('topleft');
 // Built-in offline world chart: always available, no internet needed.
 const world = WorldChart.createWorldChart(map, window.ship.loadWorldLayer, {
   onPortClick: (port, marker) => showPortPopup(port, marker),
+  loadLand: (name) => window.ship.loadLand(name),
 });
 world.chart.addTo(map);
 world.labels.addTo(map);
@@ -32,10 +33,16 @@ const seamarks = L.tileLayer('tilecache://seamark/{z}/{x}/{y}.png', {
   maxZoom: 18,
   className: 'seamark-tiles',
   attribution: '© OpenSeaMap',
-}).addTo(map);
-// Official S-57 ENC charts imported by the user (drawn above the OSM detail, below seamarks).
-const enc = EncChart.createEncLayer({ loadCell: (name) => window.ship.encLoad(name) });
+});
+// Nautical chart layer: built-in worldwide seamarks from OpenStreetMap (lights, buoys, wrecks …)
+// and official S-57 ENC charts imported by the user, drawn above the OSM detail.
+const enc = EncChart.createEncLayer({
+  loadCell: (name) => (name.startsWith('OSM_') ? window.ship.loadSeamarks(name) : window.ship.encLoad(name)),
+});
+enc.layer.addTo(map);
 seamarks.setZIndex(4);
+const encToggle = L.layerGroup().addTo(map);
+const seamarkToggle = L.layerGroup().addTo(map);
 // Latitude/longitude grid: lines are drawn in the chart tiles, labels along the edges.
 const gridLabels = new Voyage.GridLabels().addTo(map);
 // AIS targets (if the ship's AIS feed reaches this computer over UDP/TCP).
@@ -52,9 +59,10 @@ L.control.layers(null, {
   '<span class="lc-tss">▰</span> Traffic separation schemes': tssToggle,
   '<span class="lc-lim">┅</span> Maritime limits: 12 nm · 24 nm · EEZ': limitsToggle,
   'Place names, ports': world.labels,
-  '<span class="lc-enc">▦</span> ENC charts (S-57)': enc.layer,
+  '<span class="lc-enc">✦</span> Seamarks: lights, buoys, wrecks (built in)': seamarkToggle,
+  '<span class="lc-enc">▦</span> ENC charts (S-57)': encToggle,
   'OpenStreetMap detail (zoom 9+)': osm,
-  'Seamarks (zoom 9+)': seamarks,
+  'OpenSeaMap online overlay (zoom 9+)': seamarks,
 }, { position: 'topleft' }).addTo(map);
 map.on('overlayadd overlayremove', (e) => {
   const on = e.type === 'overlayadd';
@@ -66,7 +74,15 @@ map.on('overlayadd overlayremove', (e) => {
     world.setVisible('limits', on);
     window.ship.saveSettings({ limits: on });
   }
-  if (e.layer === enc.layer) window.ship.saveSettings({ encVisible: on });
+  if (e.layer === encToggle) {
+    enc.setVisible('enc', on);
+    window.ship.saveSettings({ encVisible: on });
+  }
+  if (e.layer === seamarkToggle) {
+    enc.setVisible('builtin', on);
+    window.ship.saveSettings({ seamarksVisible: on });
+  }
+  if (e.layer === seamarks) window.ship.saveSettings({ openSeaMap: on });
   if (e.layer === gridLabels) {
     world.setGraticule(e.type === 'overlayadd');
     window.ship.saveSettings({ grid: e.type === 'overlayadd' });
@@ -78,7 +94,7 @@ L.control.scale({ metric: true, imperial: true, position: 'bottomleft' }).addTo(
 
 // Charted depth at a point: the ENC depth area when an ENC covers it, else the world chart band.
 function chartDepth(lat, lon) {
-  return (map.hasLayer(enc.layer) && enc.depthAt(lat, lon)) || world.depthAt(lat, lon);
+  return (map.hasLayer(encToggle) && enc.depthAt(lat, lon)) || world.depthAt(lat, lon);
 }
 
 function formatDepth(d) {
@@ -981,7 +997,7 @@ map.on('contextmenu', (e) => {
   const d = formatDepth(chartDepth(lat, lng));
   const ship = shipPosition();
   const rb = ship ? NavCore.rhumb([ship.lat, ship.lon], [lat, lng]) : null;
-  const encHits = map.hasLayer(enc.layer) ? enc.pick(map, e.latlng) : [];
+  const encHits = enc.pick(map, e.latlng);
   const popup = L.popup({ className: 'port-popup point-popup', maxWidth: 300 })
     .setLatLng(e.latlng)
     .setContent(`
@@ -1062,7 +1078,7 @@ function zoomToCell(name) {
   const c = encCells.find((x) => x.name === name);
   if (!c) return;
   const [w, s, e, n] = c.bbox;
-  if (!map.hasLayer(enc.layer)) enc.layer.addTo(map);
+  if (!map.hasLayer(encToggle)) encToggle.addTo(map);
   setFollow(false);
   map.fitBounds([[s, w], [n, e]], { paddingTopLeft: [40, 40], paddingBottomRight: [380, 40] });
 }
@@ -1154,7 +1170,7 @@ function showEncInfo(hits) {
 
 // Left click on a chart symbol (buoy, light, danger, line…) shows what it is.
 map.on('click', (e) => {
-  if (!map.hasLayer(enc.layer) || planner.planning || measure.active || !enc.cellCount()) return;
+  if (planner.planning || measure.active || !enc.cellCount()) return;
   const hits = enc.pick(map, e.latlng, 7).filter((h) => h.kind < 2);
   if (hits.length) showEncInfo(hits);
 });
@@ -1165,6 +1181,12 @@ map.on('click', (e) => {
   } catch { /* names fall back to the S-57 acronyms */ }
   const s = await window.ship.getSettings();
   if (s.enc) enc.setSettings(s.enc);
-  if (s.encVisible !== false) enc.layer.addTo(map);
+  if (s.encVisible === false) map.removeLayer(encToggle);
+  if (s.seamarksVisible === false) map.removeLayer(seamarkToggle);
+  // The built-in seamarks replace the online OpenSeaMap overlay, which stays available in the layers menu.
+  if (s.openSeaMap) seamarks.addTo(map);
+  try {
+    enc.setBuiltin(JSON.parse(await window.ship.loadSeamarks('index')));
+  } catch { /* built without the seamark layer */ }
   await refreshEnc();
 })();

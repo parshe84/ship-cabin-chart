@@ -182,6 +182,101 @@
 
   const indexes = {};
 
+  // --- Detailed coastline: OpenStreetMap land polygons (scripts/build-osm-land.py) from zoom 8 ---
+
+  const COAST_MIN_ZOOM = 8;
+  const COAST_MAX_LOADED = 40;
+  const coast = { squares: new Map(), load: null };
+
+  // Binary square -> { fill: geojson-vt index, line: geojson-vt index, polys: [{ bbox, rings }] }.
+  function decodeLand(bytes, [sx, sy]) {
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let i = 0;
+    const u32 = () => { const v = dv.getUint32(i, true); i += 4; return v; };
+    const varint = () => {
+      let r = 0, mul = 1, b;
+      do { b = bytes[i++]; r += (b & 0x7f) * mul; mul *= 128; } while (b & 0x80);
+      return r % 2 ? -(r + 1) / 2 : r / 2; // zigzag
+    };
+    const fills = [], lines = [], polys = [];
+    const edge = (a, b) => (a[0] === b[0] && (a[0] === sx || a[0] === sx + 5)) || (a[1] === b[1] && (a[1] === sy || a[1] === sy + 5));
+    for (let n = u32(); n > 0; n--) {
+      let px = Math.round(sx * 1e5), py = Math.round(sy * 1e5);
+      const rings = [];
+      let w = 180, s = 90, e = -180, nn = -90;
+      for (let r = u32(); r > 0; r--) {
+        const ring = [];
+        for (let k = u32(); k > 0; k--) {
+          px += varint();
+          py += varint();
+          const x = px / 1e5, y = py / 1e5;
+          ring.push([x, y]);
+          if (x < w) w = x;
+          if (x > e) e = x;
+          if (y < s) s = y;
+          if (y > nn) nn = y;
+        }
+        ring.push(ring[0]);
+        rings.push(ring);
+        // Coastline strokes: the ring without the parts lying on the square's own edges.
+        let cur = [ring[0]];
+        for (let k = 1; k < ring.length; k++) {
+          if (edge(ring[k - 1], ring[k])) {
+            if (cur.length > 1) lines.push(cur);
+            cur = [ring[k]];
+          } else cur.push(ring[k]);
+        }
+        if (cur.length > 1) lines.push(cur);
+      }
+      fills.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: rings }, properties: {} });
+      polys.push({ bbox: [w, s, e, nn], rings });
+    }
+    const opts = { maxZoom: INDEX_MAX_ZOOM, extent: EXTENT, buffer: 64, tolerance: 1 };
+    return {
+      fill: geojsonvt({ type: 'FeatureCollection', features: fills }, opts),
+      line: geojsonvt({ type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'MultiLineString', coordinates: lines }, properties: {} }] }, opts),
+      polys,
+    };
+  }
+
+  function coastSquares(w, s, e, n) {
+    const out = [];
+    for (const sq of coast.squares.values()) {
+      const [a, b, c, d] = sq.bbox;
+      if (c >= w && a <= e && d >= s && b <= n) out.push(sq);
+    }
+    return out;
+  }
+
+  function ensureSquare(sq) {
+    sq.used = performance.now();
+    if (sq.data) return Promise.resolve(sq.data);
+    if (!sq.loading) {
+      sq.loading = coast.load(sq.name)
+        .then((bytes) => {
+          sq.data = decodeLand(bytes, sq.bbox);
+          const loaded = [...coast.squares.values()].filter((q) => q.data).sort((a, b) => a.used - b.used);
+          for (const q of loaded.slice(0, Math.max(0, loaded.length - COAST_MAX_LOADED))) q.data = null;
+          return sq.data;
+        })
+        .catch((err) => { console.warn(`coast ${sq.name}: ${err.message}`); sq.failed = true; return null; })
+        .finally(() => { sq.loading = null; });
+    }
+    return sq.loading;
+  }
+
+  // true / false when a loaded detailed square covers the point, null otherwise.
+  function coastLandAt(lat, lon) {
+    if (!coast.squares.size) return null;
+    const sq = coastSquares(lon, lat, lon, lat)[0];
+    if (!sq) return false; // no land polygons in this square at all
+    if (!sq.data) return null;
+    return sq.data.polys.some((p) => {
+      const [w, s, e, n] = p.bbox;
+      return lon >= w && lon <= e && lat >= s && lat <= n && p.rings.reduce((inside, r) => (ringContains(r, lon, lat) ? !inside : inside), false);
+    });
+  }
+
   function graticuleStep(z) {
     if (z <= 2) return 30;
     if (z <= 4) return 10;
@@ -207,9 +302,29 @@
   const WorldChartLayer = L.GridLayer.extend({
     options: { tileSize: 256, maxZoom: 18, attribution: 'Natural Earth · ETOPO1 depths (NOAA) via Mapzen Terrarium · TSS &amp; maritime limits © OpenStreetMap contributors (ODbL)' },
 
-    createTile(coords) {
+    createTile(coords, done) {
       const size = this.getTileSize();
       const tile = document.createElement('canvas');
+      let squares = [];
+      if (coords.z >= COAST_MIN_ZOOM && coast.squares.size) {
+        const nw = this._map.unproject([coords.x * size.x, coords.y * size.y], coords.z);
+        const se = this._map.unproject([(coords.x + 1) * size.x, (coords.y + 1) * size.y], coords.z);
+        squares = coastSquares(nw.lng, se.lat, se.lng, nw.lat).filter((q) => !q.failed);
+      }
+      const useCoast = coords.z >= COAST_MIN_ZOOM && coast.squares.size > 0;
+      if (squares.some((q) => !q.data)) {
+        Promise.all(squares.map(ensureSquare)).then(() => {
+          this._draw(tile, coords, size, useCoast, squares);
+          done(null, tile);
+        });
+      } else {
+        this._draw(tile, coords, size, useCoast, squares);
+        setTimeout(() => done(null, tile), 0);
+      }
+      return tile;
+    },
+
+    _draw(tile, coords, size, useCoast, squares) {
       const ratio = window.devicePixelRatio || 1;
       tile.width = size.x * ratio;
       tile.height = size.y * ratio;
@@ -229,6 +344,10 @@
 
       ctx.lineJoin = 'round';
       for (const layer of LAYERS) {
+        if (useCoast && (layer.name === 'land' || layer.name === 'coastline')) {
+          this._drawCoast(ctx, layer.name, squares, z, x, y, scale, dx, dy);
+          continue;
+        }
         const index = indexes[layer.name];
         if (!index) continue;
         const t = index.getTile(z, x, y);
@@ -264,7 +383,30 @@
       ctx.shadowBlur = 0;
       ctx.setLineDash([]);
       if (showGraticule) this._drawGraticule(ctx, coords, size);
-      return tile;
+    },
+
+    _drawCoast(ctx, which, squares, z, x, y, scale, dx, dy) {
+      const glow = which === 'coastline' && P.coastGlow;
+      ctx.shadowColor = glow || 'transparent';
+      ctx.shadowBlur = glow ? 6 : 0;
+      ctx.setLineDash([]);
+      for (const sq of squares) {
+        if (!sq.data) continue;
+        const t = sq.data[which === 'land' ? 'fill' : 'line'].getTile(z, x, y);
+        if (!t) continue;
+        for (const f of t.features) {
+          drawGeometry(ctx, f, scale, dx, dy);
+          if (which === 'land') {
+            ctx.fillStyle = P.land;
+            ctx.fill('evenodd');
+          } else {
+            ctx.strokeStyle = P.coast;
+            ctx.lineWidth = P.coastWidth;
+            ctx.stroke();
+          }
+        }
+      }
+      ctx.shadowBlur = 0;
     },
 
     _drawGraticule(ctx, coords, size) {
@@ -402,7 +544,9 @@
   // or null before the data has loaded.
   function depthAt(lat, lon) {
     if (!depthPolys.length) return null;
-    if (landPolys.some((p) => polyContains(p, lat, lon))) return { land: true };
+    const detailed = coastLandAt(lat, lon);
+    if (detailed === true) return { land: true };
+    if (detailed === null && landPolys.some((p) => polyContains(p, lat, lon))) return { land: true };
     for (const p of depthPolys) {
       if (!polyContains(p, lat, lon)) continue;
       const i = DEPTH_LEVELS.indexOf(p.depth);
@@ -418,6 +562,7 @@
   // Returns the layers right away; they fill in once `ready` resolves.
   function createWorldChart(map, loadLayer, opts = {}) {
     onPortClick = opts.onPortClick || null;
+    coast.load = opts.loadLand || null;
     const chart = new WorldChartLayer();
     const labels = createLabelLayer(map);
 
@@ -437,6 +582,11 @@
         indexes[layer.name] = geojsonvt(data, {
           maxZoom: INDEX_MAX_ZOOM, extent: EXTENT, buffer: 64, tolerance: 2,
         });
+      }
+      if (coast.load) {
+        try {
+          for (const sq of JSON.parse(await loadLayer('land-index'))) coast.squares.set(sq.name, { ...sq, data: null });
+        } catch { /* built without the detailed coastline */ }
       }
       labelData.marine = JSON.parse(await loadLayer('marine-labels')).features;
       labelData.ports = JSON.parse(await loadLayer('ports')).features;

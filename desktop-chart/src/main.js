@@ -319,6 +319,7 @@ ipcMain.handle('download-corridor', (_e, o) => {
 const WORLD_LAYERS = new Set(['bathymetry', 'land', 'coastline', 'ice', 'lakes', 'rivers', 'borders', 'reefs',
   'marine-labels', 'ports', 'places', 'sea-routes', 'distance-table', 'maritime']);
 ipcMain.handle('load-world-layer', (_e, name) => {
+  if (name === 'land-index') return fs.promises.readFile(path.join(__dirname, 'maps', 'land', 'index.json'), 'utf8');
   if (!WORLD_LAYERS.has(name)) throw new Error(`unknown layer ${name}`);
   return fs.promises.readFile(path.join(__dirname, 'maps', 'world', `${name}.json`), 'utf8');
 });
@@ -522,6 +523,17 @@ ipcMain.handle('export-route-rtz', async (_e, waypoints, name) => {
 const encLibrary = new EncLibrary(path.join(dataDir, 'enc'));
 let encBusy = false;
 
+// Detailed coastline (scripts/build-osm-land.py): binary 5° squares of OSM land polygons.
+ipcMain.handle('load-land', async (_e, name) => {
+  if (!/^L_[EW]\d{3}_[NS]\d{2}$/.test(String(name))) throw new Error(`unknown land square ${name}`);
+  return new Uint8Array(await fs.promises.readFile(path.join(__dirname, 'maps', 'land', `${name}.bin`)));
+});
+
+// Built-in worldwide seamarks (scripts/build-osm-seamarks.py): index.json and 10° squares.
+ipcMain.handle('load-seamarks', (_e, name) => {
+  if (!/^(index|OSM_[EW]\d{3}_[NS]\d{2})$/.test(String(name))) throw new Error(`unknown seamark square ${name}`);
+  return fs.promises.readFile(path.join(__dirname, 'maps', 'seamarks', `${name}.json`), 'utf8');
+});
 ipcMain.handle('enc-list', () => encLibrary.list());
 ipcMain.handle('enc-catalogue', () => fs.promises.readFile(path.join(__dirname, 's57', 'catalogue.json'), 'utf8'));
 ipcMain.handle('enc-load', (_e, name) => encLibrary.load(String(name)));

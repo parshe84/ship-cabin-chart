@@ -1,0 +1,1 @@
+{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[143.905656,7.363708]},"properties":{"c":"BOYLAT","a":{"COLOUR":"3","BOYSHP":"2","CATLAM":"1"},"id":0}},{"type":"Feature","geometry":{"type":"Point","coordinates":[149.169791,7.370974]},"properties":{"c":"LIGHTS","a":{"OBJNAM":"Japanese Lighthouse"},"id":1}}]}

@@ -23,6 +23,10 @@ The UI is in English.
   - Phone sentences: `$IIXDR,P,<bar>,B,Barometer` and `$HCHDT,<deg>,T`; QR pairing URL `cabingps://connect?host=<ip>&port=<port>`.
   - `scripts/build-sea-routes.py`: builds `sea-routes.json` (network + ~4,000 ports) and `distance-table.json` from searoute-py data.
   - `scripts/build-osm-maritime.py`: builds `maritime.json` (TSS + territorial/contiguous/EEZ/baseline lines, ODbL) from the OSM planet ORC on S3; drawn by `drawMaritime` in `world-chart.js`.
+  - `scripts/build-osm-land.py`: builds `src/maps/land/*.bin` (OSM land polygons, 5° squares, varint-delta binary) from
+    Daylight earth `theme=land`; `world-chart.js` draws them instead of Natural Earth land from zoom 8 (`COAST_MIN_ZOOM`).
+  - `scripts/build-osm-seamarks.py`: builds `src/maps/seamarks/*.json` (OpenSeaMap nodes mapped to S-57 classes, 10° squares)
+    from the planet ORC; `enc-layer.js` loads them as built-in "cells" (band 0, per-object min zoom).
   - `scripts/build-world-map.js`: rebuilds the Natural Earth layers in `src/maps/world` (`npm run build-map`).
   - `scripts/build-bathymetry.py`: rebuilds `src/maps/world/bathymetry.json` (isobaths 10…10000 m) from ETOPO1 via Terrarium tiles on S3. `world-chart.js` `DEPTH_LEVELS` must match its `DEPTHS`.
 - Fonts (Space Grotesk, JetBrains Mono) are bundled from `@fontsource-variable` because the app must work offline.
