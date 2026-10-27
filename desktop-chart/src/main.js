@@ -10,6 +10,7 @@ const { parseSentence } = require('./nmea');
 const { AisDecoder } = require('./ais');
 const QRCode = require('qrcode');
 const { parseRouteFile, buildRtz } = require('./rtz');
+const { EncLibrary } = require('./enc-library');
 
 // Portable mode: keep settings, track and cached tiles next to the .exe.
 const dataDir = process.env.PORTABLE_EXECUTABLE_DIR
@@ -514,6 +515,37 @@ ipcMain.handle('export-route-rtz', async (_e, waypoints, name) => {
   if (canceled || !filePath) return { ok: false };
   await fs.promises.writeFile(filePath, buildRtz(wps, String(name || `Ship Cabin Chart ${stamp}`).slice(0, 80)));
   return { ok: true, path: filePath };
+});
+
+// --- S-57 ENC charts ---
+
+const encLibrary = new EncLibrary(path.join(dataDir, 'enc'));
+let encBusy = false;
+
+ipcMain.handle('enc-list', () => encLibrary.list());
+ipcMain.handle('enc-catalogue', () => fs.promises.readFile(path.join(__dirname, 's57', 'catalogue.json'), 'utf8'));
+ipcMain.handle('enc-load', (_e, name) => encLibrary.load(String(name)));
+ipcMain.handle('enc-remove', (_e, names) => encLibrary.remove((Array.isArray(names) ? names : []).map(String)));
+ipcMain.handle('enc-import', async (_e, kind) => {
+  if (encBusy) return { ok: false, error: 'An import is already running' };
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, kind === 'folder'
+    ? { title: 'Import ENC charts: choose a folder (e.g. ENC_ROOT)', properties: ['openDirectory'] }
+    : {
+      title: 'Import ENC charts (S-57 .000 cells or .zip)',
+      filters: [{ name: 'S-57 ENC', extensions: ['000', 'zip'] }, { name: 'All files', extensions: ['*'] }],
+      properties: ['openFile', 'multiSelections'],
+    });
+  if (canceled || !filePaths.length) return { ok: false };
+  encBusy = true;
+  try {
+    const results = await encLibrary.import(filePaths, (p) => win && win.webContents.send('enc-progress', p));
+    if (!results.length) return { ok: false, error: 'No S-57 cells (.000 files) were found there' };
+    return { ok: true, results };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  } finally {
+    encBusy = false;
+  }
 });
 
 ipcMain.handle('import-route', async () => {

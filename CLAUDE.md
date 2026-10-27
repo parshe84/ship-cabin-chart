@@ -13,6 +13,10 @@ The UI is in English.
   - `src/renderer/app.js`: HUD, themes (auto by sun elevation, see `sun.js`), track, labels.
   - `src/renderer/nav-core.js`: navigation maths shared with tests: rhumb legs, `SeaRouter` (Dijkstra over MARNET), `routeProgress` (DTG/XTE/waypoint switching), `SpeedAverage`.
   - `src/renderer/voyage.js`: `RoutePlanner` (route from GPS position, Shift+click sea lanes), `MeasureTool`, `GridLabels`, ports/distance dialog.
+  - `src/s57/` (+ `test/s57.test.js`, `test/s57-writer.js` builds test cells): S-57 ENC reader. `iso8211.js` parses the
+    container, `s57.js` resolves topology, applies updates and outputs GeoJSON; `catalogue.json` from `scripts/build-s57-catalogue.py`.
+  - `src/enc-library.js`: ENC import (files/folders/zip via fflate) into `ShipCabinChart-data/enc`, converted in
+    `enc-worker.js` (asar-unpacked). `renderer/enc-layer.js` draws cells with S-52-like symbology and answers pick/depth queries.
   - `src/rtz.js` (+ `test/rtz.test.js`): ECDIS route exchange, RTZ (IEC 61174) import/export and GPX route import.
   - `src/ais.js` (+ `test/ais.test.js`): AIS decoder for types 1/2/3/5/18/19/24; `renderer/ais-layer.js` draws targets with CPA/TCPA.
   - `renderer/barometer.js`: pressure history (`pressure.json`), trend, storm alert; `sun.js` also has sunrise/sunset, moon phase, zone time.

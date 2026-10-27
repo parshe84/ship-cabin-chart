@@ -117,6 +117,27 @@ Everything else comes from [Natural Earth](https://www.naturalearthdata.com/) 1:
 
 It covers the whole planet and is sharpest at ocean and regional scale (roughly zoom 1–9).
 
+**Official ENC charts (S-57).** The **ENC** button imports electronic navigational charts from
+hydrographic offices in the unencrypted IHO S-57 format: single cells (`.000` with their `.001…` updates,
+which are applied in order), a whole folder such as an `ENC_ROOT` exchange set, or a `.zip` as downloaded.
+Free sources include [NOAA](https://charts.noaa.gov/ENCs/ENCs.shtml) for all US waters. Encrypted S-63 cells
+(C-MAP, Primar, AVCS) cannot be opened. Cells are converted once and kept in `ShipCabinChart-data/enc`.
+
+They are drawn in a simplified IHO S-52 presentation, in the day, night and red themes:
+
+- depth areas shaded by the **shallow, safety and deep contours** you set, the safety contour drawn bold;
+- soundings (shallower than the safety contour in a darker colour), rocks, wrecks and obstructions, with the
+  magenta **isolated danger** symbol for dangers shallower than the safety contour in deeper water;
+- buoys and beacons by shape and colour (cardinal topmarks), lights with flares, **sectors** and their
+  characteristic (e.g. `Fl(2) G 6s 12m 5M`), fog signals;
+- traffic separation schemes, fairways, restricted, anchorage and cable areas, cables and pipelines, names.
+
+Detail follows the cell's navigational purpose (overview to berthing) and each object's SCAMIN. **Click** a
+buoy, light or line for its full S-57 attributes; **right-click** anywhere for the depth area and *Chart objects*.
+The chart depth under the cursor and under the ship comes from the ENC where one covers it. The S-57 object
+catalogue (`src/s57/catalogue.json`) is built from GDAL's tables (MIT) with `scripts/build-s57-catalogue.py`.
+This is a planning and situational-awareness display, not a type-approved ECDIS.
+
 **Detailed coastal maps (zoom 9+).** OpenStreetMap and OpenSeaMap seamarks are drawn on top whenever
 they are available, either online or from the local cache. Before a voyage, open the area in port and use
 **Download detailed area**. Every tile you have looked at is cached too. Each download is limited to

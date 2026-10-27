@@ -174,13 +174,13 @@
         <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>
         <span>Maps</span>
       </button>
-      <button id="btn-gpx" class="act" title="Export the track as GPX">
-        <svg viewBox="0 0 24 24"><path d="M4 18c3-6 5 2 8-4s5-8 8-6"/><circle cx="4" cy="18" r="1.6"/><circle cx="20" cy="8" r="1.6"/></svg>
-        <span>GPX</span>
+      <button id="btn-enc" class="act" title="Official ENC charts (S-57): import, display settings">
+        <svg viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg>
+        <span>ENC</span>
       </button>
-      <button id="btn-clear" class="act" title="Clear the recorded track">
-        <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
-        <span>Clear</span>
+      <button id="btn-track" class="act" title="Recorded track: export as GPX or clear">
+        <svg viewBox="0 0 24 24"><path d="M4 18c3-6 5 2 8-4s5-8 8-6"/><circle cx="4" cy="18" r="1.6"/><circle cx="20" cy="8" r="1.6"/></svg>
+        <span>Track</span>
       </button>
       <button id="btn-settings" class="act" title="Connection settings">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>
@@ -300,6 +300,66 @@
     </form>
   </dialog>
 
+  <dialog id="track-dialog" class="small">
+    <form method="dialog">
+      <h3>Recorded track</h3>
+      <p class="muted" id="track-info"></p>
+      <menu>
+        <button value="cancel">Close</button>
+        <button id="track-clear" type="button">Clear track</button>
+        <button id="track-gpx" class="primary" type="button">Export GPX</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="enc-dialog" class="wide">
+    <form method="dialog">
+      <div class="dlg-head">
+        <h3>ENC charts · S-57</h3>
+        <button class="dlg-close" value="cancel" title="Close">✕</button>
+      </div>
+      <p class="muted">Official vector charts from hydrographic offices, in the unencrypted S-57 format (<code>.000</code> cells
+        with their <code>.001…</code> updates, a folder such as <code>ENC_ROOT</code>, or a <code>.zip</code>).
+        Free sources include NOAA for all US waters (charts.noaa.gov → ENC). Encrypted S-63 cells (C-MAP, Primar, AVCS)
+        cannot be opened. Not for navigation in place of an approved ECDIS.</p>
+      <div class="enc-actions">
+        <button id="enc-import-files" type="button" class="primary">Import cells or .zip…</button>
+        <button id="enc-import-folder" type="button">Import folder…</button>
+        <span id="enc-progress" class="muted"></span>
+      </div>
+      <div class="enc-settings">
+        <label title="Depth areas shallower than this are darkest blue">Shallow contour <input id="enc-shallow" type="number" min="0" max="50" step="0.5"> m</label>
+        <label title="Drawn bold; soundings and dangers shallower than this stand out">Safety contour <input id="enc-safety" type="number" min="0" max="200" step="0.5"> m</label>
+        <label title="Depth areas deeper than this are the lightest">Deep contour <input id="enc-deep" type="number" min="0" max="500" step="1"> m</label>
+        <label class="inline"><input id="enc-soundings" type="checkbox"> Soundings</label>
+        <label class="inline"><input id="enc-text" type="checkbox"> Names</label>
+        <label class="inline"><input id="enc-lighttext" type="checkbox"> Light descriptions</label>
+        <label class="inline" title="Cables, pipelines, buildings, landmarks, seabed, roads"><input id="enc-other" type="checkbox"> Other information</label>
+      </div>
+      <div class="enc-table-wrap">
+        <table class="enc-table">
+          <thead><tr><th><input id="enc-all" type="checkbox" title="Select all"></th><th>Cell</th><th>Purpose</th><th>Scale</th><th>Edition</th><th>Issued</th><th>Objects</th><th></th></tr></thead>
+          <tbody id="enc-cells"></tbody>
+        </table>
+        <p id="enc-empty" class="muted">No charts yet. Import S-57 cells to see them on the chart.</p>
+      </div>
+      <menu>
+        <button id="enc-remove" type="button">Remove selected</button>
+        <button value="cancel" class="primary">Done</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="enc-info" class="enc-info">
+    <form method="dialog">
+      <div class="dlg-head">
+        <h3>Chart objects</h3>
+        <button class="dlg-close" value="cancel" title="Close">✕</button>
+      </div>
+      <div id="enc-info-body"></div>
+    </form>
+  </dialog>
+
   <dialog id="download">
     <form method="dialog">
       <h3>Detailed maps for offline use</h3>
@@ -333,6 +393,7 @@
   <script src="barometer.js"></script>
   <script src="ais-layer.js"></script>
   <script src="world-chart.js"></script>
+  <script src="enc-layer.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

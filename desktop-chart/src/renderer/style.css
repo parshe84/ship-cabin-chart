@@ -371,13 +371,17 @@ dialog menu button {
   font: 600 14px "Space Grotesk", sans-serif;
   cursor: pointer;
 }
-dialog menu button.primary {
+dialog menu button.primary, .enc-actions button.primary {
+  padding: 10px 18px;
+  border-radius: 12px;
+  font: 600 14px "Space Grotesk", sans-serif;
+  cursor: pointer;
   border: none;
   color: #fff;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   box-shadow: var(--glow);
 }
-body[data-theme="night"] dialog menu button.primary { color: #001319; }
+body[data-theme="night"] dialog menu button.primary, body[data-theme="night"] .enc-actions button.primary { color: #001319; }
 dialog menu button:disabled { opacity: 0.5; }
 
 /* ---------- Depth: HUD stat, legend, cursor readout ---------- */
@@ -963,3 +967,24 @@ body[data-theme="red"] .ais-target path, body[data-theme="red"] .ais-target circ
   cursor: grab;
 }
 .leaflet-marker-draggable.wp.user b, .leaflet-marker-draggable.wp.auto { cursor: grab; }
+
+/* ENC charts dialog and object information */
+.lc-enc { color: var(--accent); }
+.enc-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+.enc-settings {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px;
+  padding: 12px 14px; border-radius: 12px; background: var(--btn); border: 1px solid var(--glass-border);
+}
+.enc-settings label { margin: 0; display: flex; align-items: center; gap: 6px; }
+.enc-settings input[type="number"] { width: 64px; }
+.enc-table-wrap { max-height: 46vh; overflow: auto; margin: 12px 0; }
+.enc-table { width: 100%; border-collapse: collapse; font: 500 12px "JetBrains Mono", monospace; }
+.enc-table th { position: sticky; top: 0; text-align: left; padding: 6px 8px; color: var(--muted); background: var(--glass-strong); font-weight: 500; }
+.enc-table td { padding: 6px 8px; border-top: 1px solid var(--glass-border); white-space: nowrap; }
+.enc-table button { padding: 3px 10px; font-size: 11px; }
+dialog.enc-info { width: min(520px, 92vw); max-height: 80vh; overflow: auto; }
+.enc-obj { border-top: 1px solid var(--glass-border); padding: 8px 0; }
+.enc-obj summary { cursor: pointer; }
+.enc-obj table { margin-top: 6px; border-collapse: collapse; font: 500 11.5px "JetBrains Mono", monospace; }
+.enc-obj th { text-align: left; color: var(--muted); font-weight: 500; padding: 2px 12px 2px 0; vertical-align: top; }
+.enc-obj td { padding: 2px 0; word-break: break-word; }

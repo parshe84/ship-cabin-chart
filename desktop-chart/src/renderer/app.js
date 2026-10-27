@@ -33,6 +33,9 @@ const seamarks = L.tileLayer('tilecache://seamark/{z}/{x}/{y}.png', {
   className: 'seamark-tiles',
   attribution: '© OpenSeaMap',
 }).addTo(map);
+// Official S-57 ENC charts imported by the user (drawn above the OSM detail, below seamarks).
+const enc = EncChart.createEncLayer({ loadCell: (name) => window.ship.encLoad(name) });
+seamarks.setZIndex(4);
 // Latitude/longitude grid: lines are drawn in the chart tiles, labels along the edges.
 const gridLabels = new Voyage.GridLabels().addTo(map);
 // AIS targets (if the ship's AIS feed reaches this computer over UDP/TCP).
@@ -49,6 +52,7 @@ L.control.layers(null, {
   '<span class="lc-tss">▰</span> Traffic separation schemes': tssToggle,
   '<span class="lc-lim">┅</span> Maritime limits: 12 nm · 24 nm · EEZ': limitsToggle,
   'Place names, ports': world.labels,
+  '<span class="lc-enc">▦</span> ENC charts (S-57)': enc.layer,
   'OpenStreetMap detail (zoom 9+)': osm,
   'Seamarks (zoom 9+)': seamarks,
 }, { position: 'topleft' }).addTo(map);
@@ -62,6 +66,7 @@ map.on('overlayadd overlayremove', (e) => {
     world.setVisible('limits', on);
     window.ship.saveSettings({ limits: on });
   }
+  if (e.layer === enc.layer) window.ship.saveSettings({ encVisible: on });
   if (e.layer === gridLabels) {
     world.setGraticule(e.type === 'overlayadd');
     window.ship.saveSettings({ grid: e.type === 'overlayadd' });
@@ -71,8 +76,19 @@ L.control.scale({ metric: true, imperial: true, position: 'bottomleft' }).addTo(
 
 // --- Depth legend with a readout of the chart depth under the cursor ---
 
+// Charted depth at a point: the ENC depth area when an ENC covers it, else the world chart band.
+function chartDepth(lat, lon) {
+  return (map.hasLayer(enc.layer) && enc.depthAt(lat, lon)) || world.depthAt(lat, lon);
+}
+
 function formatDepth(d) {
   if (!d) return { value: '—', unit: '' };
+  if (d.unsurveyed) return { value: 'Unsurveyed', unit: '' };
+  if (d.cell && !d.land) {
+    const f = (v) => (v == null ? '?' : v.toLocaleString('en-US'));
+    if (d.from != null && d.from < 0 && (d.to == null || d.to <= 0)) return { value: `dries ${f(-d.from)}`, unit: 'm', src: d.cell };
+    return { value: d.to == null ? `>${f(d.from)}` : `${f(d.from)}–${f(d.to)}`, unit: 'm', src: d.cell };
+  }
   if (d.land) return { value: 'Land', unit: '' };
   if (d.to == null) return { value: `>${d.from.toLocaleString('en-US')}`, unit: 'm' };
   return { value: `${d.from.toLocaleString('en-US')}–${d.to.toLocaleString('en-US')}`, unit: 'm' };
@@ -111,8 +127,8 @@ map.on('mousemove', (e) => {
   cursorTimer = setTimeout(() => {
     cursorTimer = null;
     const { lat, lng } = e.latlng.wrap();
-    const d = formatDepth(world.depthAt(lat, lng));
-    depthLegend.setCursor(`<b>${d.value}</b> ${d.unit} · ${toDdm(lat, 'N', 'S')} ${toDdm(lng, 'E', 'W')}`);
+    const d = formatDepth(chartDepth(lat, lng));
+    depthLegend.setCursor(`<b>${d.value}</b> ${d.unit}${d.src ? ' ENC' : ''} · ${toDdm(lat, 'N', 'S')} ${toDdm(lng, 'E', 'W')}`);
   }, 60);
 });
 map.on('mouseout', () => depthLegend.setCursor(''));
@@ -197,7 +213,7 @@ function setNeedle(cog, hdg) {
 }
 
 function renderDepth() {
-  const d = state.lat != null ? world.depthAt(state.lat, state.lon) : null;
+  const d = state.lat != null ? chartDepth(state.lat, state.lon) : null;
   const f = formatDepth(d);
   $('depth').textContent = f.value;
   $('depth-unit').textContent = f.unit;
@@ -388,7 +404,7 @@ function renderCabin() {
   const s = planner.summary();
   $('cb-dtg').textContent = s ? `${Voyage.fmtNm(s.dtg)} nm` : '—';
   $('cb-eta').textContent = s && s.eta ? `ETA ${s.eta.at} · ${s.eta.in}` : s ? 'ETA needs a speed' : 'no route';
-  const d = formatDepth(state.lat != null ? world.depthAt(state.lat, state.lon) : null);
+  const d = formatDepth(state.lat != null ? chartDepth(state.lat, state.lon) : null);
   $('cb-depth').textContent = `${d.value}${d.unit ? ' ' + d.unit : ''}`;
   const tr = barometer.trend();
   $('cb-baro').textContent = tr ? `${tr.hPa.toFixed(1)} hPa${tr.change3h != null ? ` · ${tr.change3h > 0 ? '+' : ''}${tr.change3h.toFixed(1)}/3h` : ''}` : '';
@@ -703,6 +719,7 @@ function applyTheme() {
   if (document.body.dataset.theme === theme) return;
   document.body.dataset.theme = theme;
   world.setTheme(theme);
+  enc.setTheme(theme);
   depthLegend.render(world.legend());
 }
 
@@ -726,8 +743,15 @@ $('btn-follow').onclick = () => {
 };
 map.on('dragstart', () => setFollow(false));
 
-$('btn-clear').onclick = () => {
+$('btn-track').onclick = () => {
+  $('track-info').textContent = track.length
+    ? `${track.length.toLocaleString('en-US')} positions · ${Voyage.fmtNm(loggedMeters / 1852)} nm logged`
+    : 'The track is empty.';
+  $('track-dialog').showModal();
+};
+$('track-clear').onclick = () => {
   if (!confirm('Clear the recorded track?')) return;
+  $('track-dialog').close();
   track = [];
   loggedMeters = 0;
   trackLine.setLatLngs([]);
@@ -735,7 +759,7 @@ $('btn-clear').onclick = () => {
   render();
 };
 
-$('btn-gpx').onclick = async () => {
+$('track-gpx').onclick = async () => {
   if (!track.length) {
     alert('The track is empty.');
     return;
@@ -954,20 +978,22 @@ map.on('contextmenu', (e) => {
   const { lat, lng } = e.latlng.wrap();
   const ddm = `${toDdm(lat, 'N', 'S')}  ${toDdm(lng, 'E', 'W')}`;
   const dec = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-  const d = formatDepth(world.depthAt(lat, lng));
+  const d = formatDepth(chartDepth(lat, lng));
   const ship = shipPosition();
   const rb = ship ? NavCore.rhumb([ship.lat, ship.lon], [lat, lng]) : null;
+  const encHits = map.hasLayer(enc.layer) ? enc.pick(map, e.latlng) : [];
   const popup = L.popup({ className: 'port-popup point-popup', maxWidth: 300 })
     .setLatLng(e.latlng)
     .setContent(`
       <div class="port-title">${toDdm(lat, 'N', 'S')}<br>${toDdm(lng, 'E', 'W')}</div>
       <div class="port-sub">${dec}</div>
-      <p>Chart depth: ${d.value}${d.unit ? ' ' + d.unit : ''}</p>
+      <p>Chart depth: ${d.value}${d.unit ? ' ' + d.unit : ''}${d.src ? ` <small>(ENC ${escapeHtml(d.src)})</small>` : ''}</p>
       ${rb ? `<p>From ship: ${Voyage.fmtBrg(rb.bearing)} · ${Voyage.fmtNm(rb.distanceNm)} nm</p>` : ''}
       <div class="pt-actions">
         <button type="button" data-a="copy">Copy</button>
         <button type="button" data-a="route">${planner.route ? 'Add waypoint' : 'Route here'}</button>
         <button type="button" data-a="measure">Measure from here</button>
+        ${encHits.length ? `<button type="button" data-a="enc">Chart objects (${encHits.length})</button>` : ''}
       </div>`)
     .openOn(map);
   const el = popup.getElement();
@@ -990,6 +1016,7 @@ map.on('contextmenu', (e) => {
       planner.addWaypoint([lat, lng]);
     }
   };
+  if (encHits.length) el.querySelector('[data-a="enc"]').onclick = () => { map.closePopup(); showEncInfo(encHits); };
   el.querySelector('[data-a="measure"]').onclick = () => {
     map.closePopup();
     if (planner.planning) planner.finishPlanning();
@@ -999,3 +1026,145 @@ map.on('contextmenu', (e) => {
     measure.add([lat, lng]);
   };
 });
+
+// --- ENC charts (S-57) ---
+
+const BANDS = { 1: 'Overview', 2: 'General', 3: 'Coastal', 4: 'Approach', 5: 'Harbour', 6: 'Berthing', 7: 'River' };
+let encCells = [];
+
+async function refreshEnc() {
+  encCells = await window.ship.encList();
+  enc.setCells(encCells);
+  renderEncTable();
+}
+
+function fmtIssued(d) {
+  return /^\d{8}$/.test(d) ? `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}` : d || '—';
+}
+
+function renderEncTable() {
+  $('enc-empty').hidden = encCells.length > 0;
+  $('enc-cells').innerHTML = encCells.map((c) => `
+    <tr>
+      <td><input type="checkbox" value="${escapeHtml(c.name)}"></td>
+      <td><b>${escapeHtml(c.name)}</b></td>
+      <td>${c.band} · ${BANDS[c.band] || '—'}</td>
+      <td>${c.scale ? `1:${c.scale.toLocaleString('en-US')}` : '—'}</td>
+      <td>${c.edition}${c.update ? ` / upd ${c.update}` : ''}</td>
+      <td>${fmtIssued(c.issued)}</td>
+      <td>${c.features.toLocaleString('en-US')}</td>
+      <td><button type="button" class="enc-zoom" data-cell="${escapeHtml(c.name)}">Show</button></td>
+    </tr>`).join('');
+  $('enc-all').checked = false;
+}
+
+function zoomToCell(name) {
+  const c = encCells.find((x) => x.name === name);
+  if (!c) return;
+  const [w, s, e, n] = c.bbox;
+  if (!map.hasLayer(enc.layer)) enc.layer.addTo(map);
+  setFollow(false);
+  map.fitBounds([[s, w], [n, e]], { paddingTopLeft: [40, 40], paddingBottomRight: [380, 40] });
+}
+
+function readEncSettings() {
+  const v = (id, def) => (Number.isFinite(parseFloat($(id).value)) ? parseFloat($(id).value) : def);
+  const s = {
+    shallow: v('enc-shallow', 2), safety: v('enc-safety', 10), deep: v('enc-deep', 30),
+    soundings: $('enc-soundings').checked, text: $('enc-text').checked, lightText: $('enc-lighttext').checked, other: $('enc-other').checked,
+  };
+  s.safety = Math.max(s.safety, s.shallow);
+  s.deep = Math.max(s.deep, s.safety);
+  return s;
+}
+
+function writeEncSettings(s) {
+  $('enc-shallow').value = s.shallow;
+  $('enc-safety').value = s.safety;
+  $('enc-deep').value = s.deep;
+  $('enc-soundings').checked = s.soundings;
+  $('enc-text').checked = s.text;
+  $('enc-lighttext').checked = s.lightText;
+  $('enc-other').checked = s.other;
+}
+
+$('btn-enc').onclick = () => {
+  writeEncSettings(enc.settings());
+  renderEncTable();
+  $('enc-progress').textContent = '';
+  $('enc-dialog').showModal();
+};
+$('enc-dialog').querySelector('.enc-settings').addEventListener('change', () => {
+  const s = readEncSettings();
+  enc.setSettings(s);
+  window.ship.saveSettings({ enc: s });
+});
+$('enc-cells').addEventListener('click', (e) => {
+  const b = e.target.closest('.enc-zoom');
+  if (!b) return;
+  $('enc-dialog').close();
+  zoomToCell(b.dataset.cell);
+});
+$('enc-all').onchange = (e) => {
+  $('enc-cells').querySelectorAll('input[type="checkbox"]').forEach((c) => { c.checked = e.target.checked; });
+};
+$('enc-remove').onclick = async () => {
+  const names = [...$('enc-cells').querySelectorAll('input:checked')].map((c) => c.value);
+  if (!names.length || !confirm(`Remove ${names.length} chart${names.length > 1 ? 's' : ''} from the library?`)) return;
+  await window.ship.encRemove(names);
+  await refreshEnc();
+};
+
+async function importEnc(kind) {
+  $('enc-progress').textContent = 'Choose the charts…';
+  const res = await window.ship.encImport(kind);
+  if (!res.ok) {
+    $('enc-progress').textContent = res.error || '';
+    return;
+  }
+  const ok = res.results.filter((r) => r.ok && !r.skipped);
+  const skipped = res.results.filter((r) => r.skipped);
+  const failed = res.results.filter((r) => !r.ok);
+  const parts = [`Imported ${ok.length} cell${ok.length === 1 ? '' : 's'}`];
+  if (skipped.length) parts.push(`${skipped.length} already up to date`);
+  if (failed.length) parts.push(`${failed.length} failed: ${failed.slice(0, 3).map((f) => `${f.name} (${f.error})`).join('; ')}`);
+  $('enc-progress').textContent = parts.join(' · ');
+  await refreshEnc();
+  if (ok.length === 1 && res.results.length === 1) {
+    $('enc-dialog').close();
+    zoomToCell(ok[0].name);
+  }
+}
+$('enc-import-files').onclick = () => importEnc('files');
+$('enc-import-folder').onclick = () => importEnc('folder');
+window.ship.onEncProgress((p) => {
+  $('enc-progress').textContent = p.done < p.total ? `Converting ${p.done + 1} / ${p.total}: ${p.name}…` : 'Finishing…';
+});
+
+// Object information: list of picked chart objects with their decoded attributes.
+function showEncInfo(hits) {
+  const items = hits.slice(0, 25).map((h) => enc.describe(h));
+  $('enc-info-body').innerHTML = items.map((o, i) => `
+    <details class="enc-obj" ${i === 0 ? 'open' : ''}>
+      <summary><b>${escapeHtml(o.title || o.name)}</b>${o.title ? ` · ${escapeHtml(o.name)}` : ''} <span class="muted">${escapeHtml(o.code)} · ${o.geometry} · ${escapeHtml(o.cell)}</span></summary>
+      <table>${o.attrs.map((a) => `<tr><th title="${escapeHtml(a.code)}">${escapeHtml(a.name)}</th><td>${escapeHtml(a.value)}</td></tr>`).join('') || '<tr><td class="muted">No attributes</td></tr>'}</table>
+    </details>`).join('');
+  $('enc-info').showModal();
+}
+
+// Left click on a chart symbol (buoy, light, danger, line…) shows what it is.
+map.on('click', (e) => {
+  if (!map.hasLayer(enc.layer) || planner.planning || measure.active || !enc.cellCount()) return;
+  const hits = enc.pick(map, e.latlng, 7).filter((h) => h.kind < 2);
+  if (hits.length) showEncInfo(hits);
+});
+
+(async () => {
+  try {
+    enc.setCatalogue(JSON.parse(await window.ship.encCatalogue()));
+  } catch { /* names fall back to the S-57 acronyms */ }
+  const s = await window.ship.getSettings();
+  if (s.enc) enc.setSettings(s.enc);
+  if (s.encVisible !== false) enc.layer.addTo(map);
+  await refreshEnc();
+})();
