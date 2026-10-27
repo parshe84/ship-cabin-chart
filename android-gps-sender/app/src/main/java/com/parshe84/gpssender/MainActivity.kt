@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -18,6 +19,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.abs
@@ -32,6 +35,26 @@ class MainActivity : AppCompatActivity() {
     private lateinit var toggleButton: Button
     private lateinit var statusText: TextView
     private lateinit var positionText: TextView
+    private lateinit var sensorsText: TextView
+
+    // QR from the laptop's Setup dialog: cabingps://connect?host=192.168.1.20&port=10110
+    private val scanLauncher = registerForActivityResult(ScanContract()) { result ->
+        val text = result.contents ?: return@registerForActivityResult
+        val uri = Uri.parse(text)
+        val host = uri.getQueryParameter("host")
+        val port = uri.getQueryParameter("port")?.toIntOrNull()
+        val ipv4 = Regex("^(\\d{1,3}\\.){3}\\d{1,3}$")
+        if (uri.scheme != "cabingps" || host == null || !ipv4.matches(host) || port == null || port !in 1..65535) {
+            Toast.makeText(this, R.string.scan_bad, Toast.LENGTH_LONG).show()
+            return@registerForActivityResult
+        }
+        hostInput.setText(host)
+        portInput.setText(port.toString())
+        prefs.edit().putString("host", host).putInt("port", port).apply()
+        Toast.makeText(this, getString(R.string.scan_ok, host, port), Toast.LENGTH_LONG).show()
+        // Start sending, or re-target the running service: a new start command switches the address.
+        requestPermissionsAndStart()
+    }
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
@@ -52,6 +75,17 @@ class MainActivity : AppCompatActivity() {
         toggleButton = findViewById(R.id.toggle)
         statusText = findViewById(R.id.status)
         positionText = findViewById(R.id.position)
+        sensorsText = findViewById(R.id.sensors)
+
+        findViewById<Button>(R.id.scan).setOnClickListener {
+            scanLauncher.launch(
+                ScanOptions()
+                    .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                    .setPrompt(getString(R.string.scan_prompt))
+                    .setBeepEnabled(false)
+                    .setOrientationLocked(true),
+            )
+        }
 
         hostInput.setText(prefs.getString("host", "255.255.255.255"))
         portInput.setText(prefs.getInt("port", 10110).toString())
@@ -127,6 +161,15 @@ class MainActivity : AppCompatActivity() {
             if (loc.hasSpeed()) append(String.format(Locale.US, "%.1f kn  ", loc.speed * 1.943844))
             if (loc.hasBearing()) append(String.format(Locale.US, "%03.0f°  ", loc.bearing))
             if (loc.hasAccuracy()) append(String.format(Locale.US, "±%.0f m", loc.accuracy))
+        }
+
+        val parts = mutableListOf<String>()
+        s.pressureHpa?.let { parts += getString(R.string.sensor_pressure, it) }
+        s.headingTrue?.let { parts += getString(R.string.sensor_heading, it) }
+        sensorsText.text = when {
+            parts.isNotEmpty() -> parts.joinToString("  ·  ")
+            s.running && !s.hasBarometer && !s.hasCompass -> getString(R.string.sensors_none)
+            else -> ""
         }
     }
 

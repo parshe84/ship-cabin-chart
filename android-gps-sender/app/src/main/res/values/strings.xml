@@ -17,4 +17,11 @@
     <string name="error_send">Send failed: %1$s</string>
     <string name="error_no_permission">No location permission</string>
     <string name="error_gps_off">GPS is turned off in phone settings</string>
+    <string name="scan_qr">Scan QR code from the laptop</string>
+    <string name="scan_prompt">Point at the QR code in Ship Cabin Chart → Setup</string>
+    <string name="scan_ok">Connected to %1$s:%2$d</string>
+    <string name="scan_bad">This QR code is not from Ship Cabin Chart</string>
+    <string name="sensors_none">No barometer or compass in this phone</string>
+    <string name="sensor_pressure">Barometer %1$.1f hPa</string>
+    <string name="sensor_heading">Compass %1$03.0f°T</string>
 </resources>

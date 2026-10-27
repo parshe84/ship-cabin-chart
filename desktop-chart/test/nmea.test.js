@@ -4,6 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { parseSentence, parseCoord, checksumOk } = require('../src/nmea');
 
+const near = (a, b, tol) => assert.ok(Math.abs(a - b) <= tol, `${a} not within ${tol} of ${b}`);
+
 function withChecksum(body) {
   let sum = 0;
   for (const c of body) sum ^= c.charCodeAt(0);
@@ -51,4 +53,21 @@ test('void RMC is reported as invalid', () => {
 test('unsupported sentences return null', () => {
   assert.strictEqual(parseSentence(withChecksum('GPGSV,1,1,00')), null);
   assert.strictEqual(parseSentence('garbage'), null);
+});
+
+test('XDR barometer in bar and pascal', () => {
+  assert.strictEqual(parseSentence(withChecksum('IIXDR,P,1.01325,B,Barometer')).pressure, 1013.25);
+  assert.strictEqual(parseSentence(withChecksum('IIXDR,C,19.5,C,AirTemp,P,101100,P,Baro')).pressure, 1011);
+  assert.strictEqual(parseSentence(withChecksum('IIXDR,C,19.5,C,AirTemp')), null);
+});
+
+test('MDA pressure', () => {
+  near(parseSentence(withChecksum('WIMDA,29.9213,I,1.0132,B,18.5,C,,,,,,,,,,,,,,')).pressure, 1013.2, 0.01);
+});
+
+test('HDT and HDG headings', () => {
+  assert.strictEqual(parseSentence(withChecksum('HCHDT,245.3,T')).heading, 245.3);
+  // 350 magnetic with 15 E variation -> 005 true
+  assert.strictEqual(parseSentence(withChecksum('HCHDG,350.0,,,15.0,E')).heading, 5);
+  assert.strictEqual(parseSentence(withChecksum('HCHDG,10.0,,,15.0,W')).heading, 355);
 });

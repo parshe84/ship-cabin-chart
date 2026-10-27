@@ -28,6 +28,33 @@ Two looks, switched with the **Day / Night / Auto** button:
 The HUD shows a compass dial with the course needle, speed over ground, distance logged, satellites and
 position. **GPX** exports the track for OpenCPN, Navionics, Google Earth and similar apps.
 
+## Phone sensors and pairing
+
+- **QR pairing.** *Setup* on the laptop shows a QR code; **Scan QR code** in Cabin GPS fills in the address
+  and starts sending. No typing IP addresses, and the position goes only to this laptop instead of being
+  broadcast to the whole network.
+- **Barometer.** If the phone has a pressure sensor, the HUD shows pressure, the 1 h / 3 h trend and a
+  barograph. A fall of **3 hPa in 3 hours** raises a gale warning (sound + banner), 6 hPa a storm warning.
+  A ship weather station sending NMEA `XDR`/`MDA` works too.
+- **Compass heading.** The phone's compass is sent as `HDT` (true, corrected for magnetic declination). The phone
+  rarely points at the bow, so the mounting offset is **learnt automatically** from the GPS course while
+  under way (> 4 kn, steady course). When the ship is stopped, the chart turns the ship by the heading.
+
+## Safety and display
+
+- **AIS.** If the ship's AIS feed (`!AIVDM`) reaches the laptop over UDP/TCP, nearby vessels are shown with name,
+  type, speed vector and **CPA/TCPA**. A target passing closer than 1 nm within 30 minutes raises an alarm.
+- **Red night mode.** Dim red on black keeps your night vision (Day / Night / Red / Auto button).
+- **Sun, moon and ship time.** Sunrise and sunset at the ship's position, moon phase, and ship time by
+  nautical zone (ZD from longitude).
+- **Ports on the chart.** Click a port to see the sea distance and ETA from the ship and route there in one click.
+- **Cabin display.** The monitor button shows big numbers full-screen: speed, course, position, ship time,
+  distance to go and ETA, depth, pressure. Good for a TV in the cabin.
+- **Maps along the route.** *Maps → Along the planned route* downloads detailed tiles in a corridor of ±N nm
+  along the whole route, with a tile estimate before you start.
+- **Updates.** The app checks GitHub Releases and can download the new portable exe next to the current one
+  and restart into it. This works when the repository's releases are public.
+
 ## Voyage tools
 
 - **Route from the ship (Route).** The route starts at the current GPS position. **Click** adds a waypoint;
@@ -93,7 +120,9 @@ Any app that outputs NMEA works too:
 ## Building
 
 GitHub Actions builds the APK and the Windows portable `.exe` on every push.
-When the version in `desktop-chart/package.json` changes, CI also publishes them as a **GitHub Release**. Download them from the
+When the version in `desktop-chart/package.json` changes, CI also publishes them as a **GitHub Release**.
+If the repository secrets `WIN_CSC_LINK` (base64 `.pfx`) and `WIN_CSC_KEY_PASSWORD` are set, the exe is
+code-signed and Windows SmartScreen stops warning about an unknown publisher. Download them from the
 repository's **Releases** page.
 
 Locally:

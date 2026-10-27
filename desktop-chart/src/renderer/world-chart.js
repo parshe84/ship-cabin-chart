@@ -61,6 +61,23 @@
       graticule: 'rgba(15, 45, 104, 0.22)',
     },
   };
+  // Red night vision: everything in dim reds on black, nothing blue or white.
+  THEMES.red = {
+    depth: depthPalette([[0, '#2a0606'], [0.35, '#1a0303'], [0.7, '#0e0101'], [1, '#050000']]),
+    contour: 'rgba(255, 40, 30, 0.14)',
+    contourShallow: 'rgba(255, 40, 30, 0.28)',
+    ocean: '#050000',
+    land: '#000000',
+    ice: '#140202',
+    lake: '#2a0606',
+    river: 'rgba(255, 40, 30, 0.25)',
+    coast: '#c41a12',
+    coastWidth: 1,
+    coastGlow: null,
+    border: 'rgba(200, 30, 20, 0.45)',
+    reef: '#ff3020',
+    graticule: 'rgba(255, 40, 30, 0.14)',
+  };
   let P = THEMES.night;
   let showGraticule = true;
 
@@ -201,6 +218,8 @@
 
   const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
+  let onPortClick = null;
+
   function labelIcon(className, text) {
     text = escapeHtml(text);
     return L.divIcon({ className: `chart-label ${className}`, html: `<span>${text}</span>`, iconSize: [0, 0] });
@@ -216,13 +235,14 @@
       const z = map.getZoom();
       const bounds = map.getBounds().pad(0.1);
       const placed = []; // screen positions of labels already shown, to avoid overlaps
-      const add = (lat, lon, cls, text) => {
+      const add = (lat, lon, cls, text, port) => {
         if (placed.length >= MAX_LABELS || !bounds.contains([lat, lon])) return;
         const p = map.latLngToContainerPoint([lat, lon]);
         const halfWidth = text.length * 3.5 + 6;
         if (placed.some((q) => Math.abs(q.x - p.x) < halfWidth + q.halfWidth && Math.abs(q.y - p.y) < 16)) return;
         placed.push({ x: p.x, y: p.y, halfWidth });
-        L.marker([lat, lon], { icon: labelIcon(cls, text), interactive: false, keyboard: false }).addTo(group);
+        const m = L.marker([lat, lon], { icon: labelIcon(cls, text), interactive: !!port, keyboard: false }).addTo(group);
+        if (port) m.on('click', () => onPortClick && onPortClick(port, m));
       };
 
       for (const f of labelData.marine) {
@@ -235,7 +255,7 @@
         for (const f of labelData.ports) {
           if (z < (f.properties.scalerank || 0) - 1) continue;
           const [lon, lat] = f.geometry.coordinates;
-          add(lat, lon, 'port', `⚓ ${f.properties.name}`);
+          add(lat, lon, 'port', `⚓ ${f.properties.name}`, { name: f.properties.name, lat, lon });
         }
       }
       if (z >= 4) {
@@ -313,7 +333,8 @@
   }
 
   // Returns the layers right away; they fill in once `ready` resolves.
-  function createWorldChart(map, loadLayer) {
+  function createWorldChart(map, loadLayer, opts = {}) {
+    onPortClick = opts.onPortClick || null;
     const chart = new WorldChartLayer();
     const labels = createLabelLayer(map);
 

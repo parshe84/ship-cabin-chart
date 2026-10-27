@@ -41,6 +41,10 @@ class GpsSenderService : Service(), LocationListener {
         val satellites: Int = 0,
         val packetsSent: Long = 0,
         val error: String? = null,
+        val pressureHpa: Float? = null,
+        val headingTrue: Float? = null,
+        val hasBarometer: Boolean = false,
+        val hasCompass: Boolean = false,
     )
 
     companion object {
@@ -61,6 +65,22 @@ class GpsSenderService : Service(), LocationListener {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private lateinit var locationManager: LocationManager
+    private lateinit var sensors: ShipSensors
+    private val ticker = Handler(Looper.getMainLooper())
+    private var ticks = 0L
+
+    // Heading every second, pressure every 10 seconds.
+    private val tick = object : Runnable {
+        override fun run() {
+            ticks++
+            val sb = StringBuilder()
+            sensors.headingTrue?.let { sb.append(NmeaBuilder.hdt(it)).append("\r\n") }
+            if (ticks % 10 == 1L) sensors.pressureHpa?.let { sb.append(NmeaBuilder.xdrPressure(it)).append("\r\n") }
+            if (sb.isNotEmpty()) send(sb.toString(), null)
+            _state.value = _state.value.copy(pressureHpa = sensors.pressureHpa, headingTrue = sensors.headingTrue)
+            ticker.postDelayed(this, 1000)
+        }
+    }
 
     private val gnssCallback = object : GnssStatus.Callback() {
         override fun onSatelliteStatusChanged(status: GnssStatus) {
@@ -74,6 +94,7 @@ class GpsSenderService : Service(), LocationListener {
     override fun onCreate() {
         super.onCreate()
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        sensors = ShipSensors(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -86,7 +107,12 @@ class GpsSenderService : Service(), LocationListener {
         )
 
         acquireLocks()
-        _state.value = State(running = true, target = "$host:$port")
+        _state.value = State(
+            running = true,
+            target = "$host:$port",
+            hasBarometer = sensors.hasBarometer,
+            hasCompass = sensors.hasCompass,
+        )
 
         sender.execute {
             try {
@@ -99,6 +125,9 @@ class GpsSenderService : Service(), LocationListener {
         }
 
         startGps()
+        sensors.start()
+        ticker.removeCallbacks(tick)
+        ticker.post(tick)
         return START_REDELIVER_INTENT
     }
 
@@ -127,19 +156,24 @@ class GpsSenderService : Service(), LocationListener {
             satellites = satellitesUsed,
             accuracyMeters = if (location.hasAccuracy()) location.accuracy else null,
         )
-        val data = NmeaBuilder.build(fix).toByteArray(Charsets.US_ASCII)
+        sensors.updateLocation(location)
+        send(NmeaBuilder.build(fix), location)
+    }
+
+    private fun send(text: String, location: Location?) {
+        val data = text.toByteArray(Charsets.US_ASCII)
         sender.execute {
             val s = socket
             val a = address ?: return@execute
             try {
                 s?.send(DatagramPacket(data, data.size, a, port))
                 _state.value = _state.value.copy(
-                    lastLocation = location,
+                    lastLocation = location ?: _state.value.lastLocation,
                     packetsSent = _state.value.packetsSent + 1,
                     error = null,
                 )
             } catch (e: Exception) {
-                _state.value = _state.value.copy(lastLocation = location, error = getString(R.string.error_send, e.message))
+                _state.value = _state.value.copy(error = getString(R.string.error_send, e.message))
             }
         }
     }
@@ -191,6 +225,8 @@ class GpsSenderService : Service(), LocationListener {
     }
 
     override fun onDestroy() {
+        ticker.removeCallbacks(tick)
+        sensors.stop()
         locationManager.removeUpdates(this)
         locationManager.unregisterGnssStatusCallback(gnssCallback)
         sender.execute { socket?.close() }

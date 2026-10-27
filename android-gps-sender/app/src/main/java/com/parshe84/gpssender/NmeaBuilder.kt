@@ -55,6 +55,14 @@ object NmeaBuilder {
         return sentence("GPVTG,$cog,T,,M,$kn,N,$kmh,K,A")
     }
 
+    /** Barometric pressure as a transducer reading, in bar (1013.25 hPa -> 1.01325). */
+    fun xdrPressure(hPa: Float): String =
+        sentence("IIXDR,P,${fmt("%.5f", hPa.toDouble() / 1000.0)},B,Barometer")
+
+    /** True heading. */
+    fun hdt(headingTrue: Float): String =
+        sentence("HCHDT,${fmt("%.1f", ((headingTrue % 360f) + 360f) % 360f)},T")
+
     fun checksum(body: String): String {
         var sum = 0
         for (c in body) sum = sum xor c.code

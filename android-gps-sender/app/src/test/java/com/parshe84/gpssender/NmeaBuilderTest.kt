@@ -38,4 +38,17 @@ class NmeaBuilderTest {
         val gga = NmeaBuilder.gga(fix)
         assertTrue(gga, gga.contains(",1,09,0.8,12.0,M,"))
     }
+
+    @Test
+    fun pressureIsSentInBar() {
+        val xdr = NmeaBuilder.xdrPressure(1013.25f)
+        assertTrue(xdr, xdr.startsWith("\$IIXDR,P,1.01325,B,Barometer*"))
+        assertEquals(NmeaBuilder.checksum(xdr.substring(1, xdr.indexOf('*'))), xdr.substringAfter('*'))
+    }
+
+    @Test
+    fun headingIsNormalised() {
+        assertTrue(NmeaBuilder.hdt(-10f).startsWith("\$HCHDT,350.0,T*"))
+        assertTrue(NmeaBuilder.hdt(370f).startsWith("\$HCHDT,10.0,T*"))
+    }
 }

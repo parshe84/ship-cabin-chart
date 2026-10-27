@@ -67,3 +67,43 @@ test('sea router: Rotterdam to Singapore goes via Suez, ~8,300 nm', () => {
   assert.ok(cape.passages.includes('south_africa'), `passages: ${cape.passages}`);
   assert.ok(cape.distanceNm > r.distanceNm + 2500, 'avoiding Suez goes round the Cape');
 });
+
+test('pressureTrend: storm warning on a 3 hPa fall in 3 hours', () => {
+  const now = 10 * 3600e3;
+  const steady = [[now - 3 * 3600e3, 1012], [now - 3600e3, 1012], [now, 1011.5]];
+  assert.strictEqual(nav.pressureTrend(steady, now).alert, null);
+  const falling = [[now - 3 * 3600e3, 1010], [now - 2 * 3600e3, 1009], [now - 3600e3, 1008.5], [now, 1006.6]];
+  const t = nav.pressureTrend(falling, now);
+  near(t.change3h, -3.4, 1e-9);
+  assert.strictEqual(t.alert, 'storm');
+  assert.strictEqual(nav.pressureTrend([[now - 3 * 3600e3, 1010], [now, 1003]], now).alert, 'severe');
+  // Not enough history: no 3 h change, no false alarm
+  assert.strictEqual(nav.pressureTrend([[now, 1000]], now).change3h, null);
+});
+
+test('HeadingCalibration learns the phone mounting offset only when steady', () => {
+  const c = new nav.HeadingCalibration();
+  for (let i = 0; i < 40; i++) c.add(250 + (i % 3), 160 + (i % 3), 12); // phone sideways, 90° off
+  near(c.offset, 90, 1);
+  near(c.heading(170), 260, 1);
+  const slow = new nav.HeadingCalibration();
+  for (let i = 0; i < 40; i++) slow.add(250, 160, 1); // at anchor: COG is meaningless
+  assert.strictEqual(slow.offset, null);
+});
+
+test('CPA/TCPA: crossing target and opening target', () => {
+  // Own ship north at 10 kn, target 10 nm east heading west at 10 kn: the relative motion runs
+  // diagonally, so the closest approach is 10/sqrt(2) = 7.07 nm after 30 minutes.
+  const own = { lat: 0, lon: 0, sog: 10, cog: 0 };
+  const tgt = { lat: 0, lon: 10 / 60, sog: 10, cog: 270 };
+  const r = nav.cpa(own, tgt);
+  near(r.rangeNm, 10, 0.05);
+  near(r.tcpaMin, 30, 0.5);
+  near(r.cpaNm, 7.07, 0.05);
+  // Head-on collision course: CPA 0
+  const head = nav.cpa(own, { lat: 10 / 60, lon: 0, sog: 10, cog: 180 });
+  near(head.cpaNm, 0, 0.01);
+  near(head.tcpaMin, 30, 0.5);
+  // Target astern and slower: opening, TCPA negative
+  assert.ok(nav.cpa(own, { lat: -0.05, lon: 0, sog: 5, cog: 0 }).tcpaMin < 0);
+});

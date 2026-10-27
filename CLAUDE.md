@@ -13,6 +13,9 @@ The UI is in English.
   - `src/renderer/app.js`: HUD, themes (auto by sun elevation, see `sun.js`), track, labels.
   - `src/renderer/nav-core.js`: navigation maths shared with tests: rhumb legs, `SeaRouter` (Dijkstra over MARNET), `routeProgress` (DTG/XTE/waypoint switching), `SpeedAverage`.
   - `src/renderer/voyage.js`: `RoutePlanner` (route from GPS position, Shift+click sea lanes), `MeasureTool`, `GridLabels`, ports/distance dialog.
+  - `src/ais.js` (+ `test/ais.test.js`): AIS decoder for types 1/2/3/5/18/19/24; `renderer/ais-layer.js` draws targets with CPA/TCPA.
+  - `renderer/barometer.js`: pressure history (`pressure.json`), trend, storm alert; `sun.js` also has sunrise/sunset, moon phase, zone time.
+  - Phone sentences: `$IIXDR,P,<bar>,B,Barometer` and `$HCHDT,<deg>,T`; QR pairing URL `cabingps://connect?host=<ip>&port=<port>`.
   - `scripts/build-sea-routes.py`: builds `sea-routes.json` (network + ~4,000 ports) and `distance-table.json` from searoute-py data.
   - `scripts/build-world-map.js`: rebuilds the Natural Earth layers in `src/maps/world` (`npm run build-map`).
   - `scripts/build-bathymetry.py`: rebuilds `src/maps/world/bathymetry.json` (isobaths 10…10000 m) from ETOPO1 via Terrarium tiles on S3. `world-chart.js` `DEPTH_LEVELS` must match its `DEPTHS`.

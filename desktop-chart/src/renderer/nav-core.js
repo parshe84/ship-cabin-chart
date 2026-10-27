@@ -232,6 +232,86 @@
     }
   }
 
+  // --- Collision avoidance: closest point of approach ---
+
+  // own/target: { lat, lon, sog (kn), cog (deg) }. Returns { cpaNm, tcpaMin, rangeNm, bearing }.
+  // tcpaMin < 0 means the closest point is already behind (the vessels are opening).
+  function cpa(own, target) {
+    const toXY = (p) => toLocal([own.lat, own.lon], [p.lat, p.lon]);
+    const vel = (v) => {
+      const s = v.sog || 0, c = (v.cog || 0) * rad;
+      return [s * Math.sin(c), s * Math.cos(c)]; // knots east, north
+    };
+    const [px, py] = toXY(target);
+    const [ox, oy] = vel(own);
+    const [tx, ty] = vel(target);
+    const dvx = tx - ox, dvy = ty - oy;
+    const dv2 = dvx * dvx + dvy * dvy;
+    const tcpaH = dv2 < 1e-9 ? 0 : -(px * dvx + py * dvy) / dv2;
+    const cx = px + dvx * tcpaH, cy = py + dvy * tcpaH;
+    return {
+      cpaNm: Math.hypot(cx, cy),
+      tcpaMin: tcpaH * 60,
+      rangeNm: Math.hypot(px, py),
+      bearing: (Math.atan2(px, py) / rad + 360) % 360,
+    };
+  }
+
+  // --- Barometer ---
+
+  // samples: [[timeMs, hPa]] in time order. Change over the last 1 h and 3 h, and an alert level
+  // by the classic rule of thumb: a fall of 3 hPa or more in 3 hours means a gale is likely.
+  function pressureTrend(samples, now = Date.now()) {
+    if (!samples.length) return null;
+    const latest = samples[samples.length - 1];
+    const at = (msAgo) => {
+      const t = now - msAgo;
+      let best = null;
+      for (const s of samples) {
+        if (s[0] < t - 20 * 60 * 1000) continue; // need a sample within 20 min of the target time
+        if (s[0] > t + 20 * 60 * 1000) break;
+        if (!best || Math.abs(s[0] - t) < Math.abs(best[0] - t)) best = s;
+      }
+      return best;
+    };
+    const h1 = at(3600e3), h3 = at(3 * 3600e3);
+    const change1h = h1 ? latest[1] - h1[1] : null;
+    const change3h = h3 ? latest[1] - h3[1] : null;
+    let alert = null;
+    if (change3h != null && change3h <= -6) alert = 'severe';
+    else if ((change3h != null && change3h <= -3) || (change1h != null && change1h <= -2)) alert = 'storm';
+    return { hPa: latest[1], change1h, change3h, alert };
+  }
+
+  // --- Phone compass calibration ---
+
+  // The phone on the porthole doesn't point at the bow. While the ship makes way on a steady
+  // course, the difference between COG and the phone's heading is that mounting offset.
+  class HeadingCalibration {
+    constructor(offset = null) {
+      this.offset = offset;
+      this.samples = [];
+    }
+    add(cog, phoneHeading, sog) {
+      if (cog == null || phoneHeading == null || sog == null || sog < 4) return;
+      this.samples.push(wrapLon(cog - phoneHeading));
+      if (this.samples.length > 120) this.samples.shift();
+      if (this.samples.length < 30) return;
+      // Circular mean and spread of the differences.
+      let x = 0, y = 0;
+      for (const d of this.samples) {
+        x += Math.cos(d * rad);
+        y += Math.sin(d * rad);
+      }
+      const r = Math.hypot(x, y) / this.samples.length;
+      if (r > 0.97) this.offset = Math.atan2(y, x) / rad; // spread under ~14°
+    }
+    heading(phoneHeading) {
+      if (phoneHeading == null || this.offset == null) return null;
+      return ((phoneHeading + this.offset) % 360 + 360) % 360;
+    }
+  }
+
   function formatDuration(hours) {
     if (!Number.isFinite(hours) || hours < 0) return '—';
     const totalMin = Math.round(hours * 60);
@@ -244,6 +324,7 @@
 
   const api = {
     rhumb, greatCircleNm, pathLengthNm, unwrapPath, wrapLon, SeaRouter, routeProgress, SpeedAverage, formatDuration,
+    pressureTrend, HeadingCalibration, cpa,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.NavCore = api;

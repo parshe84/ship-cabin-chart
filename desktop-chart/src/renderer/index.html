@@ -14,6 +14,17 @@
 
   <!-- Live voyage bar (route following) and planning hints, stacked at the top -->
   <div id="top-bars">
+  <div id="alert-bar" class="alert-bar" hidden>
+    <svg viewBox="0 0 24 24"><path d="M12 3 2 21h20L12 3zM12 10v5M12 18v.5"/></svg>
+    <span id="alert-text"></span>
+    <button id="alert-close" title="Dismiss">✕</button>
+  </div>
+  <div id="update-bar" class="plan-bar" hidden>
+    <span class="pb-title">Update <span id="update-version"></span> available</span>
+    <span id="update-status" class="pb-hint"></span>
+    <button id="update-later">Later</button>
+    <button id="update-go" class="primary">Download &amp; restart</button>
+  </div>
   <div id="voyage-bar" class="voyage-bar" hidden>
     <div class="vb-cell vb-next"><label>Next <span id="vb-next-n"></span></label><b id="vb-next">—</b></div>
     <div class="vb-cell"><label>XTE</label><b id="vb-xte">—</b></div>
@@ -49,8 +60,13 @@
         </svg>
         <span>Cabin<b>Chart</b></span>
       </div>
-      <div id="link" class="link-pill" data-state="none">
-        <i></i><span id="link-text">No signal</span>
+      <div class="head-right">
+        <div id="link" class="link-pill" data-state="none">
+          <i></i><span id="link-text">No signal</span>
+        </div>
+        <button id="btn-display" class="icon-btn" title="Cabin display: big numbers, full screen (Esc to leave)">
+          <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        </button>
       </div>
     </header>
 
@@ -68,6 +84,9 @@
         <g class="dial-cardinals">
           <text y="-74">N</text><text x="78" y="5">E</text><text y="84">S</text><text x="-78" y="5">W</text>
         </g>
+        <g id="hdg-needle" style="transform: rotate(0deg); opacity: 0">
+          <line x1="0" y1="-10" x2="0" y2="-88"/><circle cy="-88" r="3.5"/>
+        </g>
         <g id="needle" style="transform: rotate(0deg)">
           <path d="M0,-66 L9,-40 L0,-46 L-9,-40 Z" fill="url(#needle-grad)"/>
         </g>
@@ -75,6 +94,7 @@
       <div class="compass-readout">
         <div class="cog"><span id="cog">---</span><small>°</small></div>
         <label>COG · TRUE</label>
+        <div id="hdg-readout" class="hdg-readout"></div>
       </div>
     </section>
 
@@ -98,10 +118,33 @@
       </div>
     </section>
 
+    <section id="baro-card" class="baro-card" hidden title="Click for the 72-hour barograph">
+      <div class="baro-head">
+        <label>Barometer</label>
+        <span id="baro-trend" class="baro-trend"></span>
+      </div>
+      <div class="baro-row">
+        <div class="mid"><span id="baro-value">—</span><small>hPa</small></div>
+        <div id="baro-spark"></div>
+      </div>
+    </section>
+
     <section class="position">
       <div class="pos-row"><label>LAT</label><span id="lat">—</span></div>
       <div class="pos-row"><label>LON</label><span id="lon">—</span></div>
       <div class="pos-meta"><span id="time">--:--:-- UTC</span><span id="age"></span></div>
+    </section>
+
+    <section id="sky-card" class="sky-card">
+      <div class="sky-time">
+        <label>Ship time <span id="zone-label"></span></label>
+        <b id="ship-time">--:--</b>
+      </div>
+      <div class="sky-row">
+        <span title="Sunrise / sunset (ship time)"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="4"/><path d="M12 3v3M4.9 6.9l1.4 1.4M19.1 6.9l-1.4 1.4M2 17h20"/></svg>
+          <b id="sunrise">--:--</b> · <b id="sunset">--:--</b></span>
+        <span id="moon" title="Moon phase"><svg id="moon-icon" viewBox="-10 -10 20 20"></svg> <b id="moon-pct">—</b></span>
+      </div>
     </section>
 
     <nav class="actions">
@@ -147,6 +190,8 @@
       <span id="status-map">Loading world chart…</span>
       <span id="status-udp"></span>
       <span id="status-tcp"></span>
+      <span id="status-ais"></span>
+      <span id="status-version"></span>
     </footer>
   </aside>
 
@@ -195,6 +240,31 @@
     </form>
   </dialog>
 
+  <dialog id="baro-dialog" class="wide">
+    <form method="dialog">
+      <header class="dlg-head">
+        <h3>Barograph</h3>
+        <span id="baro-dlg-trend" class="muted"></span>
+        <button class="dlg-close" value="cancel" title="Close">✕</button>
+      </header>
+      <div id="baro-chart" class="baro-chart"></div>
+      <p class="muted">Rule of thumb: a fall of 3 hPa or more in 3 hours means strong wind or a gale is likely within hours;
+        6 hPa or more, a storm. Source: the phone's barometer (or a ship weather station sending NMEA XDR/MDA).</p>
+    </form>
+  </dialog>
+
+  <div id="cabin" class="cabin" hidden>
+    <div class="cabin-grid">
+      <div class="cb cb-sog"><label>Speed</label><b id="cb-sog">—</b><small>kn</small></div>
+      <div class="cb cb-cog"><label>Course</label><b id="cb-cog">—</b><small>°T</small><span id="cb-hdg" class="cb-sub"></span></div>
+      <div class="cb cb-pos"><label>Position</label><b id="cb-lat">—</b><b id="cb-lon">—</b></div>
+      <div class="cb cb-time"><label>Ship time <span id="cb-zone"></span></label><b id="cb-time">--:--</b><span id="cb-utc" class="cb-sub"></span></div>
+      <div class="cb cb-route"><label>To go</label><b id="cb-dtg">—</b><span id="cb-eta" class="cb-sub"></span></div>
+      <div class="cb cb-depth"><label>Chart depth</label><b id="cb-depth">—</b><span id="cb-baro" class="cb-sub"></span></div>
+    </div>
+    <p class="cabin-hint">Esc or click to return to the chart</p>
+  </div>
+
   <dialog id="settings">
     <form method="dialog">
       <h3>Phone connection</h3>
@@ -209,6 +279,17 @@
       <label>TCP port
         <input id="tcp-port" type="number" min="1" max="65535">
       </label>
+      <div class="pairing">
+        <div id="pairing-qr" class="qr-list"></div>
+        <p class="muted">Scan with <b>Cabin GPS → Scan QR code</b> on the phone: it fills in the address and starts sending.</p>
+      </div>
+      <h4>Phone compass</h4>
+      <p class="muted">The phone on the porthole rarely points at the bow. While the ship makes way (over 4 kn on a steady course)
+        the offset is learnt automatically from the GPS course. Current offset: <b id="hdg-offset">not calibrated</b>.</p>
+      <button type="button" id="hdg-reset">Re-calibrate</button>
+      <h4>Version</h4>
+      <p class="muted">Ship Cabin Chart <b id="app-version"></b> · <span id="update-check-result"></span></p>
+      <button type="button" id="update-check">Check for updates</button>
       <p class="muted">Data folder: <span id="data-dir"></span></p>
       <menu>
         <button value="cancel">Cancel</button>
@@ -222,9 +303,15 @@
       <h3>Detailed maps for offline use</h3>
       <p class="muted">The world chart is built in and always works offline.
         This downloads detailed OpenStreetMap tiles for the visible area, so do it in port while you have internet.</p>
+      <div class="dl-mode">
+        <label class="inline"><input type="radio" name="dl-mode" value="view" checked> Visible area</label>
+        <label class="inline"><input type="radio" name="dl-mode" value="route"> Along the planned route, ±
+          <input id="dl-radius" type="number" min="2" max="50" value="10"> nm</label>
+      </div>
       <label>Min zoom <input id="dl-min" type="number" min="1" max="17" value="9"></label>
       <label>Max zoom <input id="dl-max" type="number" min="1" max="17" value="13"></label>
       <label class="inline"><input id="dl-seamark" type="checkbox" checked> Seamarks (OpenSeaMap)</label>
+      <p id="dl-estimate" class="muted"></p>
       <p id="dl-progress" class="muted"></p>
       <menu>
         <button value="cancel">Close</button>
@@ -238,6 +325,8 @@
   <script src="sun.js"></script>
   <script src="nav-core.js"></script>
   <script src="voyage.js"></script>
+  <script src="barometer.js"></script>
+  <script src="ais-layer.js"></script>
   <script src="world-chart.js"></script>
   <script src="app.js"></script>
 </body>

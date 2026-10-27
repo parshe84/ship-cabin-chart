@@ -6,7 +6,9 @@ const map = L.map('map', { zoomControl: true, worldCopyJump: true, maxZoom: 18 }
 map.zoomControl.setPosition('topleft');
 
 // Built-in offline world chart: always available, no internet needed.
-const world = WorldChart.createWorldChart(map, window.ship.loadWorldLayer);
+const world = WorldChart.createWorldChart(map, window.ship.loadWorldLayer, {
+  onPortClick: (port, marker) => showPortPopup(port, marker),
+});
 world.chart.addTo(map);
 world.labels.addTo(map);
 world.ready
@@ -33,8 +35,14 @@ const seamarks = L.tileLayer('tilecache://seamark/{z}/{x}/{y}.png', {
 }).addTo(map);
 // Latitude/longitude grid: lines are drawn in the chart tiles, labels along the edges.
 const gridLabels = new Voyage.GridLabels().addTo(map);
+// AIS targets (if the ship's AIS feed reaches this computer over UDP/TCP).
+const aisLayer = new AisLayer(map, () => ownForCpa(), (t, d) => {
+  showAlert(`AIS: ${t.name || `MMSI ${t.mmsi}`} will pass ${d.cpaNm.toFixed(2)} nm in ${Math.round(d.tcpaMin)} min`);
+});
+aisLayer.group.addTo(map);
 L.control.layers(null, {
   'Lat / lon grid': gridLabels,
+  'AIS targets': aisLayer.group,
   'Place names, ports': world.labels,
   'OpenStreetMap detail (zoom 9+)': osm,
   'Seamarks (zoom 9+)': seamarks,
@@ -157,12 +165,20 @@ function addTrackPoint(lat, lon, time) {
   trackDirty = true;
 }
 
-function setNeedle(cog) {
+function setNeedle(cog, hdg) {
   const angle = cog || 0;
   $('needle').style.transform = `rotate(${angle}deg)`;
+  const hn = $('hdg-needle');
+  hn.style.opacity = hdg != null ? 1 : 0;
+  if (hdg != null) hn.style.transform = `rotate(${hdg}deg)`;
+  $('hdg-readout').textContent = hdg != null
+    ? `HDG ${String(Math.round(hdg) % 360).padStart(3, '0')}° · compass`
+    : state.phoneHdg != null ? 'HDG: calibrating (needs > 4 kn)' : '';
+  // Stopped or drifting: COG is meaningless, show the ship's heading from the compass instead.
+  const shipAngle = hdg != null && (state.sog == null || state.sog < 1) ? hdg : angle;
   if (shipMarker) {
     const svg = shipMarker.getElement()?.querySelector('svg');
-    if (svg) svg.style.transform = `rotate(${angle}deg)`;
+    if (svg) svg.style.transform = `rotate(${shipAngle}deg)`;
   }
 }
 
@@ -200,24 +216,226 @@ function render() {
   } else {
     shipMarker.setLatLng(pos);
   }
-  setNeedle(state.cog);
+  setNeedle(state.cog, state.hdg);
   if (state.follow) map.panTo(pos, { animate: true });
 }
 
 window.ship.onFix((fix) => {
   if (!fix.valid) return;
+  // Sensor sentences from the phone (heading, pressure) arrive between position fixes.
+  if (fix.heading != null) {
+    state.phoneHdg = fix.heading;
+    state.hdg = hdgCal.heading(fix.heading);
+    setNeedle(state.cog, state.hdg);
+    return;
+  }
+  if (fix.pressure != null) {
+    barometer.add(fix.pressure);
+    renderBaro();
+    return;
+  }
   for (const key of ['lat', 'lon', 'sog', 'cog', 'satellites', 'time']) {
     if (fix[key] != null) state[key] = fix[key];
   }
   state.lastFix = fix.receivedAt;
   state.source = fix.source;
   if (fix.sog != null) speedAvg.add(fix.sog, fix.receivedAt);
+  if (fix.type === 'RMC') learnHeadingOffset();
   if (fix.lat != null && fix.lon != null) addTrackPoint(fix.lat, fix.lon, fix.time);
   render();
   applyTheme();
   planner.update();
   renderVoyage();
+  renderCabin();
+  // Sky card follows the ship: refresh at the first fix and after moving ~30 nm.
+  if (state.lat != null && (!skyAt || Math.abs(state.lat - skyAt[0]) + Math.abs(NavCore.wrapLon(state.lon - skyAt[1])) > 0.5)) {
+    renderSky();
+  }
+  if (Date.now() - lastAisRefresh > 10e3) {
+    lastAisRefresh = Date.now();
+    aisLayer.refresh();
+  }
 });
+
+// --- Phone compass: heading with the mounting offset learnt from COG ---
+
+const hdgCal = new NavCore.HeadingCalibration();
+let savedOffset = null;
+function learnHeadingOffset() {
+  hdgCal.add(state.cog, state.phoneHdg, state.sog);
+  if (hdgCal.offset != null && (savedOffset == null || Math.abs(NavCore.wrapLon(hdgCal.offset - savedOffset)) > 2)) {
+    savedOffset = hdgCal.offset;
+    window.ship.saveSettings({ hdgOffset: savedOffset });
+  }
+}
+
+// --- Barometer ---
+
+const barometer = new Barometer({
+  load: () => window.ship.loadData('pressure'),
+  save: (samples) => window.ship.saveData('pressure', samples),
+  onAlert: (tr) => showAlert(tr.alert === 'severe'
+    ? `Storm warning: pressure fell ${Math.abs(tr.change3h).toFixed(1)} hPa in 3 hours`
+    : `Gale warning: pressure falling fast (${tr.change3h != null ? tr.change3h.toFixed(1) + ' hPa / 3 h' : tr.change1h.toFixed(1) + ' hPa / 1 h'})`),
+});
+
+function renderBaro() {
+  const tr = barometer.trend();
+  $('baro-card').hidden = !tr;
+  if (!tr) return;
+  $('baro-value').textContent = tr.hPa.toFixed(1);
+  const ch = tr.change3h ?? tr.change1h;
+  const span = tr.change3h != null ? '3h' : '1h';
+  const el = $('baro-trend');
+  el.textContent = ch == null ? 'collecting…' : `${ch > 0.2 ? '↗' : ch < -0.2 ? '↘' : '→'} ${ch > 0 ? '+' : ''}${ch.toFixed(1)} / ${span}`;
+  el.className = `baro-trend ${tr.alert ? 'storm' : ch != null && ch < -1 ? 'falling' : ''}`;
+  $('baro-spark').innerHTML = barometer.svg(barometer.span(3, 24), 130, 34);
+}
+barometer.ready.then(renderBaro);
+setInterval(renderBaro, 60e3);
+$('baro-card').onclick = () => {
+  const tr = barometer.trend();
+  $('baro-chart').innerHTML = barometer.svg(barometer.span(6, 72), Math.min(1000, window.innerWidth * 0.85), 320, { axes: true });
+  $('baro-dlg-trend').textContent = tr
+    ? `${tr.hPa.toFixed(1)} hPa · 1 h: ${tr.change1h != null ? tr.change1h.toFixed(1) : '—'} · 3 h: ${tr.change3h != null ? tr.change3h.toFixed(1) : '—'}`
+    : '';
+  $('baro-dialog').showModal();
+};
+
+// --- Alerts ---
+
+function showAlert(text) {
+  $('alert-text').textContent = text;
+  $('alert-bar').hidden = false;
+  alarmTone();
+  try { new Notification('Ship Cabin Chart', { body: text, silent: true }); } catch { /* notifications off */ }
+}
+$('alert-close').onclick = () => { $('alert-bar').hidden = true; };
+
+// --- AIS ---
+
+let lastAisRefresh = 0;
+function ownForCpa() {
+  return state.lat != null ? { lat: state.lat, lon: state.lon, sog: state.sog || 0, cog: state.cog || 0 } : null;
+}
+window.ship.onAis((msg) => {
+  aisLayer.update(msg);
+  const st = aisLayer.stats();
+  $('status-ais').textContent = `AIS · ${st.total} target${st.total === 1 ? '' : 's'}${st.danger ? ` · ${st.danger} close` : ''}`;
+});
+
+// --- Sun, moon and ship time ---
+
+function moonSvg(m) {
+  // Lit part of the disc: the terminator is an ellipse whose width follows the illumination.
+  const k = 1 - 2 * m.illumination; // 1 new … -1 full
+  const rx = Math.abs(k) * 9;
+  const sweep = m.waxing ? 1 : 0;
+  const lit = `M0,-9 A9,9 0 0 ${sweep} 0,9 A${rx},9 0 0 ${k > 0 ? 1 - sweep : sweep} 0,-9 Z`;
+  return `<circle class="dark" r="9"/><path class="lit" d="${lit}"/>`;
+}
+
+function fmtZone(t, offsetH) {
+  return t ? new Date(t + offsetH * 3600e3).toISOString().slice(11, 16) : '--:--';
+}
+
+let skyAt = null;
+function renderSky() {
+  const pos = state.lat != null ? [state.lat, state.lon] : (() => { const c = map.getCenter(); return [c.lat, c.lng]; })();
+  skyAt = state.lat != null ? pos : null;
+  const z = Sun.zoneTime(pos[1]);
+  $('ship-time').textContent = z.local.toISOString().slice(11, 16);
+  $('zone-label').textContent = `· ${z.label}`;
+  const t = Sun.sunTimes(pos[0], pos[1]);
+  $('sunrise').textContent = t.polarDay ? 'polar' : t.polarNight ? 'polar' : fmtZone(t.sunrise, z.offset);
+  $('sunset').textContent = t.polarDay ? 'day' : t.polarNight ? 'night' : fmtZone(t.sunset, z.offset);
+  const m = Sun.moonPhase();
+  $('moon-icon').innerHTML = moonSvg(m);
+  $('moon-pct').textContent = `${Math.round(m.illumination * 100)}%`;
+  $('moon').title = `${m.name}, ${Math.round(m.illumination * 100)}% lit`;
+}
+renderSky();
+setInterval(renderSky, 30e3);
+
+// --- Cabin display: big numbers on the whole screen ---
+
+function renderCabin() {
+  if ($('cabin').hidden) return;
+  $('cb-sog').textContent = state.sog != null ? state.sog.toFixed(1) : '—';
+  $('cb-cog').textContent = state.cog != null ? String(Math.round(state.cog)).padStart(3, '0') : '—';
+  $('cb-hdg').textContent = state.hdg != null ? `heading ${String(Math.round(state.hdg)).padStart(3, '0')}°` : '';
+  $('cb-lat').textContent = toDdm(state.lat, 'N', 'S');
+  $('cb-lon').textContent = toDdm(state.lon, 'E', 'W');
+  const lon = state.lon ?? map.getCenter().lng;
+  const z = Sun.zoneTime(lon);
+  $('cb-time').textContent = z.local.toISOString().slice(11, 16);
+  $('cb-zone').textContent = `· ${z.label}`;
+  $('cb-utc').textContent = `${new Date().toISOString().slice(11, 16)} UTC`;
+  const s = planner.summary();
+  $('cb-dtg').textContent = s ? `${Voyage.fmtNm(s.dtg)} nm` : '—';
+  $('cb-eta').textContent = s && s.eta ? `ETA ${s.eta.at} · ${s.eta.in}` : s ? 'ETA needs a speed' : 'no route';
+  const d = formatDepth(state.lat != null ? world.depthAt(state.lat, state.lon) : null);
+  $('cb-depth').textContent = `${d.value}${d.unit ? ' ' + d.unit : ''}`;
+  const tr = barometer.trend();
+  $('cb-baro').textContent = tr ? `${tr.hPa.toFixed(1)} hPa${tr.change3h != null ? ` · ${tr.change3h > 0 ? '+' : ''}${tr.change3h.toFixed(1)}/3h` : ''}` : '';
+}
+async function setCabin(on) {
+  $('cabin').hidden = !on;
+  await window.ship.setFullscreen(on);
+  renderCabin();
+}
+$('btn-display').onclick = () => setCabin(true);
+$('cabin').onclick = () => setCabin(false);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('cabin').hidden) setCabin(false); });
+setInterval(renderCabin, 5000);
+
+// --- Ports on the chart: sea distance and ETA from the ship ---
+
+async function showPortPopup(port, marker) {
+  await routerReady;
+  const ship = shipPosition();
+  const popup = L.popup({ className: 'port-popup', maxWidth: 300 }).setLatLng([port.lat, port.lon]);
+  if (!ship) {
+    popup.setContent(`<div class="port-title">${escapeHtml(port.name)}</div><p>Distance appears once the phone sends a position.</p>`).openOn(map);
+    return;
+  }
+  const r = router.route([ship.lat, ship.lon], [port.lat, port.lon], planner.avoid);
+  if (!r) {
+    popup.setContent(`<div class="port-title">${escapeHtml(port.name)}</div><p>No sea route found.</p>`).openOn(map);
+    return;
+  }
+  const speed = etaKnots();
+  const eta = speed ? Voyage.fmtEta(r.distanceNm / speed) : null;
+  const via = r.passages.map((x) => Voyage.PASSAGE_NAMES[x] || x).join(', ');
+  popup.setContent(`
+    <div class="port-title">⚓ ${escapeHtml(port.name)}</div>
+    <div class="port-sub">by sea from the ship${via ? ` · via ${escapeHtml(via)}` : ''}</div>
+    <div class="port-big">${Voyage.fmtNm(r.distanceNm)} <small>nm</small></div>
+    <p>${eta ? `ETA ${eta.at}<br>${eta.in} at ${speed.toFixed(1)} kn` : 'ETA: set a speed (voyage bar) or get under way'}</p>
+    <button type="button" class="route-here">Route here</button>`).openOn(map);
+  popup.getElement().querySelector('.route-here').onclick = () => {
+    map.closePopup();
+    setRouteFromPoints(r.points, 'from ship');
+  };
+}
+
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+function setRouteFromPoints(points, note) {
+  previewLayer.clearLayers();
+  planner.route = {
+    waypoints: points.map(([lat, lon], i) => ({ lat, lon, auto: i > 0 && i < points.length - 1, start: i === 0 })),
+    active: 1,
+  };
+  planner.startNote = note;
+  planner.progress = null;
+  planner.redraw();
+  planner.update();
+  planner.persist();
+  renderVoyage();
+  setFollow(false);
+  map.fitBounds(L.polyline(points).getBounds(), { paddingTopLeft: [60, 100], paddingBottomRight: [380, 60] });
+}
 
 // --- Voyage: route planning from the GPS position, ETA, distance to go ---
 
@@ -359,21 +577,7 @@ $('btn-ports').onclick = async () => {
         map.fitBounds(line.getBounds(), { paddingTopLeft: [60, 60], paddingBottomRight: [380, 60] });
         setTimeout(() => previewLayer.clearLayers(), 60000);
       },
-      useRoute: (r) => {
-        previewLayer.clearLayers();
-        planner.route = {
-          waypoints: r.points.map(([lat, lon], i) => ({ lat, lon, auto: i > 0 && i < r.points.length - 1, start: i === 0 })),
-          active: 1,
-        };
-        planner.startNote = r.from.name === 'Ship' ? 'from ship' : `from ${r.from.name}`;
-        planner.progress = null;
-        planner.redraw();
-        planner.update();
-        planner.persist();
-        renderVoyage();
-        setFollow(false);
-        map.fitBounds(L.polyline(r.points).getBounds(), { paddingTopLeft: [60, 100], paddingBottomRight: [380, 60] });
-      },
+      useRoute: (r) => setRouteFromPoints(r.points, r.from.name === 'Ship' ? 'from ship' : `from ${r.from.name}`),
     });
   }
   $('ports-dialog').showModal();
@@ -422,8 +626,9 @@ setInterval(() => {
 
 // --- Theme: day / night / auto (by the sun at the ship's position) ---
 
-const THEME_MODES = ['auto', 'night', 'day'];
+const THEME_MODES = ['auto', 'night', 'red', 'day'];
 const THEME_ICONS = {
+  red: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3" fill="currentColor"/>',
   night: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
   day: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   auto: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>',
@@ -440,7 +645,7 @@ function resolveTheme() {
 
 function applyTheme() {
   const theme = resolveTheme();
-  $('theme-label').textContent = themeMode === 'auto' ? `Auto · ${theme}` : theme[0].toUpperCase() + theme.slice(1);
+  $('theme-label').textContent = themeMode === 'auto' ? `Auto · ${theme}` : theme === 'red' ? 'Red night' : theme[0].toUpperCase() + theme.slice(1);
   $('theme-icon').innerHTML = THEME_ICONS[themeMode];
   if (document.body.dataset.theme === theme) return;
   document.body.dataset.theme = theme;
@@ -493,8 +698,23 @@ $('btn-settings').onclick = async () => {
   $('tcp-host').value = s.tcpHost;
   $('tcp-port').value = s.tcpPort;
   $('data-dir').textContent = s.dataDir;
+  $('app-version').textContent = s.version;
+  $('hdg-offset').textContent = hdgCal.offset != null ? `${Math.round(hdgCal.offset)}°` : 'not calibrated yet';
   $('settings').showModal();
+  const qrs = await window.ship.pairingQr();
+  $('pairing-qr').innerHTML = qrs.length
+    ? qrs.map((q) => `<figure><img src="${q.url}" alt="QR code"><figcaption>${q.ip}:${s.udpPort}</figcaption></figure>`).join('')
+    : '<p class="muted">No network: connect this computer to the phone\'s Wi-Fi first.</p>';
 };
+$('hdg-reset').onclick = () => {
+  hdgCal.offset = null;
+  hdgCal.samples = [];
+  savedOffset = null;
+  state.hdg = null;
+  window.ship.saveSettings({ hdgOffset: null });
+  $('hdg-offset').textContent = 'not calibrated yet';
+};
+$('update-check').onclick = () => checkUpdates(true);
 $('settings').addEventListener('close', () => {
   if ($('settings').returnValue !== 'save') return;
   window.ship.saveSettings({
@@ -504,20 +724,50 @@ $('settings').addEventListener('close', () => {
   });
 });
 
+function downloadOptions() {
+  const b = map.getBounds();
+  return {
+    mode: document.querySelector('input[name="dl-mode"]:checked').value,
+    minZoom: parseInt($('dl-min').value, 10),
+    maxZoom: parseInt($('dl-max').value, 10),
+    layers: $('dl-seamark').checked ? ['osm', 'seamark'] : ['osm'],
+    radiusNm: parseFloat($('dl-radius').value) || 10,
+    points: planner.points(),
+    north: b.getNorth(), south: b.getSouth(), east: b.getEast(), west: b.getWest(),
+  };
+}
+
+async function updateEstimate() {
+  const o = downloadOptions();
+  if (o.mode !== 'route') {
+    $('dl-estimate').textContent = '';
+    return;
+  }
+  if (o.points.length < 2) {
+    $('dl-estimate').textContent = 'Plan a route first (Route button).';
+    return;
+  }
+  const r = await window.ship.downloadCorridor({ ...o, dryRun: true });
+  $('dl-estimate').textContent = r.ok
+    ? `${r.count.toLocaleString('en-US')} tiles${r.count > r.limit ? ` — over the limit of ${r.limit}: lower the max zoom or the width` : ''}`
+    : r.error;
+}
+
 $('btn-download').onclick = () => {
   $('dl-progress').textContent = '';
+  if (planner.points().length >= 2) document.querySelector('input[name="dl-mode"][value="route"]').checked = true;
   $('download').showModal();
+  updateEstimate();
 };
+$('download').addEventListener('change', updateEstimate);
+$('download').addEventListener('input', updateEstimate);
 $('dl-start').onclick = async () => {
-  const b = map.getBounds();
-  const minZoom = parseInt($('dl-min').value, 10);
-  const maxZoom = parseInt($('dl-max').value, 10);
-  const layers = $('dl-seamark').checked ? ['osm', 'seamark'] : ['osm'];
+  const o = downloadOptions();
   $('dl-start').disabled = true;
   $('dl-progress').textContent = 'Downloading…';
-  const res = await window.ship.downloadArea({
-    north: b.getNorth(), south: b.getSouth(), east: b.getEast(), west: b.getWest(), minZoom, maxZoom, layers,
-  });
+  const res = o.mode === 'route'
+    ? await window.ship.downloadCorridor(o)
+    : await window.ship.downloadArea(o);
   $('dl-start').disabled = false;
   $('dl-progress').textContent = res.ok
     ? `Done: ${res.done} tiles${res.failed ? `, failed: ${res.failed}` : ''}`
@@ -535,6 +785,12 @@ window.ship.onDownloadProgress((p) => {
   themeMode = THEME_MODES.includes(s.themeMode) ? s.themeMode : 'auto';
   applyTheme();
   etaSpeed = s.etaSpeed || null;
+  if (s.hdgOffset != null) {
+    hdgCal.offset = s.hdgOffset;
+    savedOffset = s.hdgOffset;
+  }
+  $('status-version').textContent = `v${s.version}`;
+  setTimeout(() => checkUpdates(false), 15e3);
   if (s.grid === false) {
     map.removeLayer(gridLabels);
     world.setGraticule(false);
@@ -547,3 +803,37 @@ window.ship.onDownloadProgress((p) => {
   render();
   if (track.length) map.setView(track[track.length - 1].slice(0, 2), 11);
 })();
+
+// --- Updates from GitHub Releases ---
+
+async function checkUpdates(manual) {
+  const r = await window.ship.checkUpdate();
+  const msg = !r.ok
+    ? r.reason === 'offline' ? 'no internet' : r.reason === 'private' ? 'the release page is private, updates need a public repository' : `update server unavailable (${r.reason})`
+    : r.available ? `${r.latest} is available` : `up to date (${r.current})`;
+  $('update-check-result').textContent = msg;
+  if (r.ok && r.available && r.asset) {
+    $('update-version').textContent = r.latest;
+    $('update-status').textContent = `${(r.asset.size / 1048576).toFixed(0)} MB`;
+    $('update-bar').hidden = false;
+  } else if (manual && $('settings').open === false) {
+    $('status-map').textContent = `Updates: ${msg}`;
+  }
+}
+$('update-later').onclick = () => { $('update-bar').hidden = true; };
+$('update-go').onclick = async () => {
+  $('update-go').disabled = true;
+  $('update-status').textContent = 'downloading…';
+  const r = await window.ship.downloadUpdate();
+  if (!r.ok) {
+    $('update-status').textContent = r.error;
+    $('update-go').disabled = false;
+    return;
+  }
+  $('update-status').textContent = 'starting the new version…';
+  const started = await window.ship.launchUpdate(r.path);
+  if (!started) $('update-status').textContent = `saved to ${r.path}`;
+};
+window.ship.onUpdateProgress((p) => {
+  $('update-status').textContent = `downloading ${Math.round((100 * p.got) / (p.total || p.got))}%`;
+});

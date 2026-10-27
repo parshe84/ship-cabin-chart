@@ -79,6 +79,35 @@ function parseSentence(raw) {
     }
     case 'VTG':
       return { type, valid: true, cog: num(f[1]), sog: num(f[5]) };
+    case 'HDT': {
+      const heading = num(f[1]);
+      return heading == null ? null : { type, valid: true, heading };
+    }
+    case 'HDG': {
+      // Magnetic heading + variation (E positive) = true heading.
+      const mag = num(f[1]);
+      if (mag == null) return null;
+      const variation = (num(f[4]) || 0) * (f[5] === 'W' ? -1 : 1);
+      return { type, valid: true, heading: (((mag + variation) % 360) + 360) % 360 };
+    }
+    case 'XDR': {
+      // Transducer quadruplets: type, value, unit, name. Pressure in bar (B) or pascal (P).
+      for (let i = 1; i + 2 < f.length; i += 4) {
+        if (f[i] !== 'P') continue;
+        const v = num(f[i + 1]);
+        if (v == null) continue;
+        const hPa = f[i + 2] === 'B' ? v * 1000 : f[i + 2] === 'P' ? v / 100 : null;
+        if (hPa && hPa > 850 && hPa < 1100) return { type, valid: true, pressure: hPa };
+      }
+      return null;
+    }
+    case 'MDA': {
+      // Meteorological composite: pressure in inches (f[1]) and bar (f[3]).
+      const bar = num(f[3]);
+      const inch = num(f[1]);
+      const hPa = bar != null ? bar * 1000 : inch != null ? inch * 33.8639 : null;
+      return hPa ? { type, valid: true, pressure: hPa } : null;
+    }
     default:
       return null;
   }
