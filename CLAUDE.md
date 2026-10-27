@@ -13,6 +13,7 @@ The UI is in English.
   - `src/renderer/app.js`: HUD, themes (auto by sun elevation, see `sun.js`), track, labels.
   - `src/renderer/nav-core.js`: navigation maths shared with tests: rhumb legs, `SeaRouter` (Dijkstra over MARNET), `routeProgress` (DTG/XTE/waypoint switching), `SpeedAverage`.
   - `src/renderer/voyage.js`: `RoutePlanner` (route from GPS position, Shift+click sea lanes), `MeasureTool`, `GridLabels`, ports/distance dialog.
+  - `src/rtz.js` (+ `test/rtz.test.js`): ECDIS route exchange, RTZ (IEC 61174) import/export and GPX route import.
   - `src/ais.js` (+ `test/ais.test.js`): AIS decoder for types 1/2/3/5/18/19/24; `renderer/ais-layer.js` draws targets with CPA/TCPA.
   - `renderer/barometer.js`: pressure history (`pressure.json`), trend, storm alert; `sun.js` also has sunrise/sunset, moon phase, zone time.
   - Phone sentences: `$IIXDR,P,<bar>,B,Barometer` and `$HCHDT,<deg>,T`; QR pairing URL `cabingps://connect?host=<ip>&port=<port>`.

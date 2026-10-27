@@ -57,11 +57,20 @@ position. **GPX** exports the track for OpenCPN, Navionics, Google Earth and sim
 
 ## Voyage tools
 
-- **Route from the ship (Route).** The route starts at the current GPS position. **Click** adds a waypoint;
+- **Route from the ship (Route).** The route starts at the current GPS position (without a GPS fix the first
+  click places the start). **Click** adds a waypoint;
   **Shift+click** routes along the shipping lanes around land (through Suez, Panama, Gibraltar and other
   straits), with a live preview while Shift is held. A tooltip at the cursor shows the leg course and distance,
-  the total and the **ETA**. Drag waypoints to move them, click the line to insert one, right-click to delete,
-  **Enter**/double-click to finish. The route is saved and can be exported as GPX.
+  the total and the **ETA**. Drag the start and any waypoint with the left mouse button (also after planning),
+  click the line to insert one, right-click to delete, **Enter**/double-click to finish. The route is saved and
+  can be exported as GPX or **RTZ** for ECDIS.
+- **ECDIS routes (RTZ).** *Route → Import RTZ* (or **Ctrl+O**) opens an IEC 61174 `.rtz` route exported from an
+  ECDIS (RTZ 1.0–1.2, UTF-8 or UTF-16) or a GPX route. The **RTZ** button in the voyage bar exports the route
+  as RTZ 1.0 with rhumb-line legs.
+- **Right-click on the chart** shows the position (degrees and decimal minutes, and decimal), the chart depth
+  and the bearing/distance from the ship, with *Copy*, *Route here / Add waypoint* and *Measure from here*.
+- **Map download** skips open-ocean tiles by default (*Coasts only*) and suggests the highest zoom that fits
+  the tile limit.
 - **Voyage bar.** While following the route: next waypoint (bearing and distance), **XTE** (cross-track error,
   S = starboard, P = port), **distance to go** and **ETA** (UTC) with time to go. Waypoints switch automatically
   when reached or passed. ETA uses the **average SOG over the last 10 minutes** or a planned speed you set.

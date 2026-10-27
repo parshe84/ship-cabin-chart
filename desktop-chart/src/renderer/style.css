@@ -913,3 +913,53 @@ body[data-theme="red"] .ais-target path, body[data-theme="red"] .ais-target circ
 /* Layers menu swatches for the OSM maritime layer */
 .lc-tss { color: #d946ef; }
 .lc-lim { color: #f59e0b; }
+
+/* Ports dialog: route alternatives */
+.alts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.alt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  background: var(--btn);
+  color: var(--text);
+  font: 500 12px "Space Grotesk", sans-serif;
+  cursor: pointer;
+  text-align: left;
+}
+.alt b { font: 600 14px "JetBrains Mono", monospace; }
+.alt small { color: var(--muted); font-family: "JetBrains Mono", monospace; }
+.alt span { color: var(--muted); }
+.alt.on { border-color: var(--accent); box-shadow: var(--glow); }
+.avoid-hint { margin-top: 8px; color: var(--warn); font-size: 12.5px; }
+
+/* Right-click point popup */
+.point-popup .port-title { font: 600 15px "JetBrains Mono", monospace; line-height: 1.4; }
+.pt-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.pt-actions button {
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--glass-border);
+  border-radius: 9px;
+  background: var(--btn);
+  color: var(--text);
+  font: 600 11.5px "Space Grotesk", sans-serif;
+  cursor: pointer;
+}
+.pt-actions button:hover { background: var(--btn-hover); }
+
+/* Route start point (draggable) */
+.wp.start i {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  background: var(--route);
+  box-shadow: 0 0 10px var(--route);
+  cursor: grab;
+}
+.leaflet-marker-draggable.wp.user b, .leaflet-marker-draggable.wp.auto { cursor: grab; }

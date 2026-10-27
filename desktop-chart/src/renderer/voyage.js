@@ -192,7 +192,7 @@
 
     load(saved) {
       if (saved && Array.isArray(saved.waypoints) && saved.waypoints.length >= 2) {
-        this.route = { waypoints: saved.waypoints, active: saved.active || 1 };
+        this.route = { waypoints: saved.waypoints, active: saved.active || 1, name: saved.name };
         if (Array.isArray(saved.avoid)) this.avoid = saved.avoid;
         this.redraw();
         this.update();
@@ -212,10 +212,10 @@
     startPlanning() {
       if (this.planning) return;
       if (!this.route) {
+        // Start at the ship; without a GPS fix the first click places the start point.
         const ship = this.getShip();
-        const start = ship ? [ship.lat, ship.lon] : [this.map.getCenter().lat, this.map.getCenter().lng];
-        this.route = { waypoints: [{ lat: start[0], lon: start[1], start: true }], active: 1 };
-        this.startNote = ship ? 'from ship' : 'from chart centre (no GPS yet)';
+        this.route = { waypoints: ship ? [{ lat: ship.lat, lon: ship.lon, start: true }] : [], active: 1 };
+        this.startNote = ship ? 'from ship' : 'no GPS: click to place the start';
       }
       this.planning = true;
       const m = this.map;
@@ -283,7 +283,19 @@
 
     _lastPoint() {
       const w = this.route.waypoints[this.route.waypoints.length - 1];
-      return [w.lat, w.lon];
+      return w ? [w.lat, w.lon] : null;
+    }
+
+    // Append a waypoint at the end of the route (used by the right-click menu).
+    addWaypoint(p) {
+      if (!this.route) this.route = { waypoints: [], active: 1 };
+      const last = this._lastPoint();
+      const lon = last ? last[1] + wrapLon(p[1] - last[1]) : p[1];
+      this.route.waypoints.push({ lat: p[0], lon, start: !last });
+      this.redraw();
+      this.update();
+      if (!this.planning) this.persist();
+      this.onChange();
     }
 
     _seaPath(from, to) {
@@ -295,6 +307,13 @@
     _onClick(e) {
       const p = [e.latlng.lat, e.latlng.lng];
       const last = this._lastPoint();
+      if (!last) {
+        this.route.waypoints.push({ lat: p[0], lon: p[1], start: true });
+        this.startNote = 'from the clicked point';
+        this.redraw();
+        this.onChange();
+        return;
+      }
       const target = [p[0], last[1] + wrapLon(p[1] - last[1])];
       if (e.originalEvent.shiftKey) {
         const sea = this._seaPath(last, target);
@@ -320,6 +339,12 @@
       this._lastMouse = e;
       const p = [e.latlng.lat, e.latlng.lng];
       const last = this._lastPoint();
+      if (!last) {
+        this.rubber.setLatLngs([]);
+        this.tip.setLatLng(p).setContent('<b>Click to place the start point</b>');
+        if (!this.map.hasLayer(this.tip)) this.tip.addTo(this.layer);
+        return;
+      }
       const target = [p[0], last[1] + wrapLon(p[1] - last[1])];
       const shift = e.originalEvent && e.originalEvent.shiftKey;
       let path = [last, target];
@@ -373,11 +398,18 @@
       const wps = this.route.waypoints;
       const pts = this.points();
       const active = this.progress ? this.progress.active : this.route.active || 1;
+      this._liveLines = null;
 
       if (pts.length >= 2) {
-        L.polyline(pts.slice(0, active), { className: 'route-line done', weight: 3, interactive: false }).addTo(this.layer);
+        const done = L.polyline(pts.slice(0, active), { className: 'route-line done', weight: 3, interactive: false }).addTo(this.layer);
         const ahead = L.polyline(pts.slice(active - 1), { className: 'route-line', weight: 3.5, bubblingMouseEvents: false })
           .addTo(this.layer);
+        // Lines follow a waypoint while it is being dragged.
+        this._liveLines = () => {
+          const q = this.points();
+          done.setLatLngs(q.slice(0, active));
+          ahead.setLatLngs(q.slice(active - 1));
+        };
         // Click on the route line while planning inserts a waypoint into that leg.
         ahead.on('click', (e) => {
           if (!this.planning) return;
@@ -404,34 +436,47 @@
         segStart = i;
       }
 
-      // Waypoint markers: numbered for user waypoints, small dots for sea-lane points.
+      // Waypoint markers: numbered for user waypoints, small dots for sea-lane points, a ring for the start.
+      // All of them can be dragged with the left mouse button at any time.
       let n = 0;
       wps.forEach((w, i) => {
-        if (i === 0) {
-          L.circleMarker(pts[0], { radius: 5, className: 'route-start', interactive: false }).addTo(this.layer);
-          return;
-        }
         const user = !w.auto;
-        if (user) n++;
+        if (user && i > 0) n++;
         const isNext = i === active;
-        const icon = L.divIcon({
-          className: `wp ${user ? 'user' : 'auto'} ${i < active ? 'passed' : ''} ${isNext ? 'next' : ''}`,
-          html: user ? `<b>${i === wps.length - 1 ? '⚑' : n}</b>` : '',
-          iconSize: user ? [24, 24] : [8, 8],
-          iconAnchor: user ? [12, 12] : [4, 4],
+        const icon = i === 0
+          ? L.divIcon({ className: 'wp start', html: '<i></i>', iconSize: [16, 16], iconAnchor: [8, 8] })
+          : L.divIcon({
+            className: `wp ${user ? 'user' : 'auto'} ${i < active ? 'passed' : ''} ${isNext ? 'next' : ''}`,
+            html: user ? `<b>${i === wps.length - 1 ? '⚑' : n}</b>` : '',
+            iconSize: user ? [24, 24] : [8, 8],
+            iconAnchor: user ? [12, 12] : [4, 4],
+          });
+        const marker = L.marker(pts[i], {
+          icon, draggable: true, keyboard: false, zIndexOffset: i === 0 ? 600 : user ? 500 : 0,
+          title: `${w.name ? `${w.name} · ` : ''}${i === 0 ? 'Start · drag to move' : 'Drag to move · right-click to delete (while planning)'}`,
         });
-        const marker = L.marker(pts[i], { icon, draggable: this.planning, keyboard: false, zIndexOffset: user ? 500 : 0 });
         marker.on('drag', (e) => {
           const ll = e.target.getLatLng();
           wps[i].lat = ll.lat;
           wps[i].lon = ll.lng;
-          wps[i].auto = false;
+          if (i > 0) wps[i].auto = false;
+          this._liveLines && this._liveLines();
         });
-        marker.on('dragend', () => { this.redraw(); this.update(); this.onChange(); });
+        marker.on('dragend', () => {
+          this.redraw();
+          this.update();
+          if (!this.planning) this.persist();
+          this.onChange();
+        });
         marker.on('contextmenu', (e) => {
           L.DomEvent.stop(e);
-          if (!this.planning) return;
+          if (!this.planning) {
+            // Outside planning, right-click shows the coordinates like anywhere else on the chart.
+            this.map.fire('contextmenu', { latlng: e.latlng, originalEvent: e.originalEvent });
+            return;
+          }
           wps.splice(i, 1);
+          if (wps.length) wps[0].start = true;
           this.redraw();
           this.update();
           this.onChange();
@@ -556,14 +601,42 @@
         lastResult = null;
         return;
       }
-      lastResult = { ...r, from, to };
-      const speed = getSpeed() || 12;
-      const via = r.passages.filter((x) => x !== 'segment').map((x) => PASSAGE_NAMES[x] || x);
-      const far = Math.max(from.snap || 0, to.snap || 0) > 30;
-      out.innerHTML = `
-        <div class="p2p-big"><b>${fmtNm(r.distanceNm)}</b> nm <small>${Math.round(r.distanceNm * 1.852).toLocaleString('en-US')} km</small></div>
-        <div>${esc(from.name)} → ${esc(to.name)}${via.length ? ` · via ${esc(via.join(', '))}` : ''}</div>
-        <div class="muted">${formatDuration(r.distanceNm / speed)} at ${speed.toFixed(1)} kn${far ? ' · port is far from the shipping-lane network, distance is approximate' : ''}</div>`;
+      // Alternatives: the same trip avoiding, in turn, each passage the best route uses.
+      const key = (x) => x.passages.slice().sort().join(',');
+      const alts = [r];
+      for (const p of r.passages) {
+        if (p === 'bering') continue;
+        const a = router().route(from.at, to.at, [...avoid, p]);
+        if (a && a.distanceNm < r.distanceNm * 1.6 && !alts.some((x) => key(x) === key(a))) alts.push(a);
+      }
+      // Passages the user excluded that would make the trip shorter.
+      const hints = [];
+      for (const p of avoid) {
+        if (p === 'northwest') continue;
+        const a = router().route(from.at, to.at, avoid.filter((x) => x !== p));
+        if (a && a.distanceNm < r.distanceNm - 5) hints.push({ p, saved: r.distanceNm - a.distanceNm });
+      }
+      const show = (i) => {
+        const x = alts[i];
+        lastResult = { ...x, from, to };
+        const speed = getSpeed() || 12;
+        const viaOf = (y) => y.passages.filter((v) => v !== 'segment').map((v) => PASSAGE_NAMES[v] || v);
+        const far = Math.max(from.snap || 0, to.snap || 0) > 30;
+        const altHtml = alts.length > 1 ? `<div class="alts">${alts.map((y, j) => `
+          <button type="button" class="alt ${j === i ? 'on' : ''}" data-i="${j}">
+            <b>${fmtNm(y.distanceNm)} nm</b>${j ? ` <small>+${fmtNm(y.distanceNm - alts[0].distanceNm)}</small>` : ' <small>shortest</small>'}
+            <span>${esc(viaOf(y).join(', ') || 'open sea')}</span></button>`).join('')}</div>` : '';
+        const hintHtml = hints.map((h) => `<div class="avoid-hint">${esc(PASSAGE_NAMES[h.p] || h.p)} is excluded (Avoid) —
+          allowing it would save ${fmtNm(h.saved)} nm.</div>`).join('');
+        out.innerHTML = `
+          <div class="p2p-big"><b>${fmtNm(x.distanceNm)}</b> nm <small>${Math.round(x.distanceNm * 1.852).toLocaleString('en-US')} km</small></div>
+          <div>${esc(from.name)} → ${esc(to.name)}${viaOf(x).length ? ` · via ${esc(viaOf(x).join(', '))}` : ''}</div>
+          <div class="muted">${formatDuration(x.distanceNm / speed)} at ${speed.toFixed(1)} kn${far ? ' · port is far from the shipping-lane network, distance is approximate' : ''}</div>
+          ${altHtml}${hintHtml}`;
+        out.querySelectorAll('.alt').forEach((b) => (b.onclick = () => show(+b.dataset.i)));
+      };
+      alts.sort((a, b) => a.distanceNm - b.distanceNm);
+      show(0);
     };
     dialog.querySelectorAll('#p2p-from, #p2p-to').forEach((i) => i.addEventListener('change', calc));
     dialog.querySelector('#avoid-list').addEventListener('change', calc);

@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, protocol, net, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, dialog, shell, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const dgram = require('dgram');
@@ -9,6 +9,7 @@ const os = require('os');
 const { parseSentence } = require('./nmea');
 const { AisDecoder } = require('./ais');
 const QRCode = require('qrcode');
+const { parseRouteFile, buildRtz } = require('./rtz');
 
 // Portable mode: keep settings, track and cached tiles next to the .exe.
 const dataDir = process.env.PORTABLE_EXECUTABLE_DIR
@@ -24,6 +25,8 @@ const TILE_SOURCES = {
 };
 const USER_AGENT = `ShipCabinChart/${app.getVersion()} (+https://github.com/parshe84/ship-cabin-chart)`;
 const REPO = 'parshe84/ship-cabin-chart';
+// The OSM tile usage policy requires a User-Agent that identifies the application.
+app.userAgentFallback = USER_AGENT;
 
 const defaultSettings = { udpPort: 10110, tcpHost: '', tcpPort: 10110, follow: true, themeMode: 'auto' };
 let settings = { ...defaultSettings };
@@ -160,39 +163,103 @@ async function runDownload(jobs) {
       error: `Too many tiles (${jobs.length}). Lower the max zoom or the area (limit ${MAX_DOWNLOAD_TILES}).`,
     };
   }
-  let done = 0, failed = 0;
+  let done = 0, failed = 0, firstError = null;
+  const total = jobs.length;
   const workers = Array.from({ length: 2 }, async () => {
     while (jobs.length) {
       const [layer, z, x, y] = jobs.shift();
-      try { await fetchTile(layer, z, x, y); } catch { failed++; }
+      try {
+        await fetchTile(layer, z, x, y);
+      } catch (e) {
+        failed++;
+        firstError = firstError || e.message;
+      }
       done++;
-      if (done % 10 === 0) send('download-progress', { done, failed });
+      if (done % 10 === 0) send('download-progress', { done, failed, total });
     }
   });
   await Promise.all(workers);
-  return { ok: true, done, failed };
+  return { ok: true, done, failed, error: firstError };
 }
 
 const tileLayers = (layers) => (Array.isArray(layers) ? layers.filter((l) => TILE_SOURCES[l]) : ['osm']);
+const wrapLon = (lon) => ((((lon + 180) % 360) + 360) % 360) - 180;
 
-ipcMain.handle('download-area', (_e, { north, south, east, west, minZoom, maxZoom, layers }) => {
-  const jobs = [];
-  for (let z = clampZoom(minZoom); z <= clampZoom(maxZoom); z++) {
-    for (let x = lon2tile(west, z); x <= lon2tile(east, z); x++) {
-      for (let y = lat2tile(north, z); y <= lat2tile(south, z); y++) {
-        for (const layer of tileLayers(layers)) jobs.push([layer, z, x, y]);
+// Detailed tiles only matter near land: over the open ocean an OSM tile is a flat blue square.
+// COAST_ZOOM tiles that touch a coastline (plus one tile around them) form the "coastal" set.
+const COAST_ZOOM = 10;
+let coastalTiles = null;
+function coastal() {
+  if (coastalTiles) return coastalTiles;
+  coastalTiles = new Set();
+  const n = 2 ** COAST_ZOOM;
+  const mark = (lon, lat) => {
+    const x = lon2tile(wrapLon(lon), COAST_ZOOM), y = lat2tile(Math.max(-85, Math.min(85, lat)), COAST_ZOOM);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) coastalTiles.add(`${(x + dx + n) % n}/${y + dy}`);
+    }
+  };
+  for (const name of ['coastline', 'lakes']) {
+    const geo = JSON.parse(fs.readFileSync(path.join(__dirname, 'maps', 'world', `${name}.json`), 'utf8'));
+    for (const f of geo.features) {
+      const g = f.geometry;
+      if (!g) continue;
+      const lines = g.type === 'LineString' ? [g.coordinates]
+        : g.type === 'MultiLineString' || g.type === 'Polygon' ? g.coordinates
+          : g.type === 'MultiPolygon' ? g.coordinates.flat() : [];
+      for (const line of lines) {
+        for (let i = 0; i < line.length; i++) {
+          const [lon1, lat1] = line[i];
+          mark(lon1, lat1);
+          const next = line[i + 1];
+          if (!next) continue;
+          // Fill long segments so no coastal tile is skipped (step ~ half a tile).
+          const steps = Math.ceil(Math.hypot(next[0] - lon1, next[1] - lat1) / (180 / n));
+          for (let k = 1; k < steps; k++) mark(lon1 + ((next[0] - lon1) * k) / steps, lat1 + ((next[1] - lat1) * k) / steps);
+        }
       }
     }
   }
-  return runDownload(jobs);
-});
+  return coastalTiles;
+}
 
-// Tiles within `radiusNm` of a route polyline, for every zoom in range.
-function corridorJobs(points, radiusNm, minZoom, maxZoom, layers) {
-  const wrap = (lon) => ((((lon + 180) % 360) + 360) % 360) - 180;
-  const jobs = [];
+function isCoastal(z, x, y) {
+  const set = coastal();
+  if (z >= COAST_ZOOM) {
+    const d = z - COAST_ZOOM;
+    return set.has(`${x >> d}/${y >> d}`);
+  }
+  const d = COAST_ZOOM - z;
+  for (let cx = x << d; cx < (x + 1) << d; cx++) {
+    for (let cy = y << d; cy < (y + 1) << d; cy++) if (set.has(`${cx}/${cy}`)) return true;
+  }
+  return false;
+}
+
+// Tiles of the visible area for each zoom: { z: [[x, y], …] }.
+function areaTiles({ north, south, east, west }, minZoom, maxZoom) {
+  const out = {};
+  const span = Math.min(360, east - west);
+  for (let z = clampZoom(minZoom); z <= clampZoom(maxZoom); z++) {
+    const n = 2 ** z;
+    const tiles = [];
+    const x0 = lon2tile(wrapLon(west), z);
+    const count = Math.min(n, Math.ceil((span / 360) * n) + 1);
+    for (let i = 0; i < count; i++) {
+      const x = (x0 + i) % n;
+      for (let y = lat2tile(Math.min(85, north), z); y <= lat2tile(Math.max(-85, south), z); y++) tiles.push([x, y]);
+    }
+    out[z] = tiles;
+  }
+  return out;
+}
+
+// Tiles within `radiusNm` of a route polyline: { z: [[x, y], …] }.
+function corridorTiles(points, radiusNm, minZoom, maxZoom) {
+  const out = {};
   for (let z = clampZoom(minZoom); z <= clampZoom(maxZoom); z++) {
     const seen = new Set();
+    const tiles = [];
     for (let i = 0; i < points.length; i++) {
       const a = points[i];
       const b = points[i + 1] || a;
@@ -205,7 +272,7 @@ function corridorJobs(points, radiusNm, minZoom, maxZoom, layers) {
         const dLat = radiusNm / 60;
         const dLon = radiusNm / 60 / Math.max(0.05, Math.cos((lat * Math.PI) / 180));
         const n = Math.min(85, lat + dLat), s = Math.max(-85, lat - dLat);
-        const x0 = lon2tile(wrap(lon - dLon), z), x1 = lon2tile(wrap(lon + dLon), z);
+        const x0 = lon2tile(wrapLon(lon - dLon), z), x1 = lon2tile(wrapLon(lon + dLon), z);
         const xs = x0 <= x1 ? [[x0, x1]] : [[x0, 2 ** z - 1], [0, x1]];
         for (const [xa, xb] of xs) {
           for (let x = xa; x <= xb; x++) {
@@ -213,21 +280,38 @@ function corridorJobs(points, radiusNm, minZoom, maxZoom, layers) {
               const key = `${x}/${y}`;
               if (seen.has(key)) continue;
               seen.add(key);
-              for (const layer of layers) jobs.push([layer, z, x, y]);
+              tiles.push([x, y]);
             }
           }
         }
       }
     }
+    out[z] = tiles;
   }
-  return jobs;
+  return out;
 }
 
-ipcMain.handle('download-corridor', (_e, { points, radiusNm, minZoom, maxZoom, layers, dryRun }) => {
-  if (!Array.isArray(points) || points.length < 2) return { ok: false, error: 'No route' };
-  const jobs = corridorJobs(points, Math.max(1, Math.min(50, +radiusNm || 10)), minZoom, maxZoom, tileLayers(layers));
-  if (dryRun) return { ok: true, count: jobs.length, limit: MAX_DOWNLOAD_TILES };
+// Common path for both modes: optional open-ocean filter, per-zoom counts for the dialog,
+// and the download itself.
+function planDownload(byZoom, { layers, coastOnly, dryRun }) {
+  const ls = tileLayers(layers);
+  const perZoom = {};
+  const jobs = [];
+  for (const [z, tiles] of Object.entries(byZoom)) {
+    const kept = coastOnly === false ? tiles : tiles.filter(([x, y]) => isCoastal(+z, x, y));
+    perZoom[z] = kept.length * ls.length;
+    for (const [x, y] of kept) for (const layer of ls) jobs.push([layer, +z, x, y]);
+  }
+  if (dryRun) return { ok: true, count: jobs.length, perZoom, limit: MAX_DOWNLOAD_TILES };
   return runDownload(jobs);
+}
+
+ipcMain.handle('download-area', (_e, o) => planDownload(areaTiles(o, o.minZoom, o.maxZoom), o));
+
+ipcMain.handle('download-corridor', (_e, o) => {
+  if (!Array.isArray(o.points) || o.points.length < 2) return { ok: false, error: 'No route' };
+  const radius = Math.max(1, Math.min(50, +o.radiusNm || 10));
+  return planDownload(corridorTiles(o.points, radius, o.minZoom, o.maxZoom), o);
 });
 
 // Bundled offline world chart and sea-route network, see scripts/build-*.
@@ -256,6 +340,8 @@ ipcMain.handle('save-data', (_e, name, value) => {
   if (!DATA_DOCS.has(name)) throw new Error(`unknown data ${name}`);
   fs.writeFileSync(path.join(dataDir, `${name}.json`), JSON.stringify(value));
 });
+
+ipcMain.handle('copy-text', (_e, text) => clipboard.writeText(String(text).slice(0, 1000)));
 
 ipcMain.handle('set-fullscreen', (_e, on) => {
   if (win) win.setFullScreen(!!on);
@@ -410,6 +496,44 @@ async function saveGpx(title, name, content) {
 
 ipcMain.handle('export-gpx', (_e, track) => saveGpx('Export track', 'ship-track', toGpx(track)));
 ipcMain.handle('export-route-gpx', (_e, waypoints) => saveGpx('Export route', 'ship-route', routeToGpx(waypoints)));
+
+const cleanWaypoints = (list) => (Array.isArray(list) ? list : [])
+  .filter((w) => w && Number.isFinite(w.lat) && Number.isFinite(w.lon) && Math.abs(w.lat) <= 90)
+  .slice(0, 5000)
+  .map((w) => ({ lat: w.lat, lon: w.lon, auto: !!w.auto, name: typeof w.name === 'string' ? w.name.slice(0, 64) : '' }));
+
+ipcMain.handle('export-route-rtz', async (_e, waypoints, name) => {
+  const wps = cleanWaypoints(waypoints);
+  if (wps.length < 2) return { ok: false, error: 'The route needs at least two points' };
+  const stamp = new Date().toISOString().slice(0, 10);
+  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    title: 'Export route for ECDIS (RTZ)',
+    defaultPath: path.join(app.getPath('documents'), `ship-route-${stamp}.rtz`),
+    filters: [{ name: 'RTZ route (IEC 61174)', extensions: ['rtz'] }],
+  });
+  if (canceled || !filePath) return { ok: false };
+  await fs.promises.writeFile(filePath, buildRtz(wps, String(name || `Ship Cabin Chart ${stamp}`).slice(0, 80)));
+  return { ok: true, path: filePath };
+});
+
+ipcMain.handle('import-route', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+    title: 'Import route (RTZ from ECDIS, or GPX)',
+    defaultPath: app.getPath('documents'),
+    filters: [{ name: 'Routes', extensions: ['rtz', 'gpx', 'xml'] }, { name: 'All files', extensions: ['*'] }],
+    properties: ['openFile'],
+  });
+  if (canceled || !filePaths.length) return { ok: false };
+  const file = filePaths[0];
+  try {
+    const { size } = await fs.promises.stat(file);
+    if (size > 20 * 1024 * 1024) throw new Error('The file is too large for a route');
+    const route = parseRouteFile(await fs.promises.readFile(file), file);
+    return { ok: true, file: path.basename(file), ...route };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
 
 function createWindow() {
   win = new BrowserWindow({

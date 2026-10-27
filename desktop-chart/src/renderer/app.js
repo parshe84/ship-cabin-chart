@@ -421,9 +421,10 @@ async function showPortPopup(port, marker) {
   const speed = etaKnots();
   const eta = speed ? Voyage.fmtEta(r.distanceNm / speed) : null;
   const via = r.passages.map((x) => Voyage.PASSAGE_NAMES[x] || x).join(', ');
+  const avoided = planner.avoid.filter((x) => x !== 'northwest').map((x) => Voyage.PASSAGE_NAMES[x] || x).join(', ');
   popup.setContent(`
     <div class="port-title">⚓ ${escapeHtml(port.name)}</div>
-    <div class="port-sub">by sea from the ship${via ? ` · via ${escapeHtml(via)}` : ''}</div>
+    <div class="port-sub">by sea from the ship${via ? ` · via ${escapeHtml(via)}` : ''}${avoided ? `<br>avoiding ${escapeHtml(avoided)} (Ports → Avoid)` : ''}</div>
     <div class="port-big">${Voyage.fmtNm(r.distanceNm)} <small>nm</small></div>
     <p>${eta ? `ETA ${eta.at}<br>${eta.in} at ${speed.toFixed(1)} kn` : 'ETA: set a speed (voyage bar) or get under way'}</p>
     <button type="button" class="route-here">Route here</button>`).openOn(map);
@@ -535,6 +536,44 @@ $('vb-gpx').onclick = async () => {
   const res = await window.ship.exportRouteGpx(planner.route.waypoints);
   if (res.ok) $('status-map').textContent = `Route saved: ${res.path}`;
 };
+$('vb-rtz').onclick = async () => {
+  if (!planner.route) return;
+  const res = await window.ship.exportRouteRtz(planner.route.waypoints, planner.route.name);
+  if (res.ok) $('status-map').textContent = `Route saved for ECDIS: ${res.path}`;
+  else if (res.error) alert(res.error);
+};
+
+// Route from ECDIS (.rtz) or GPX: every point becomes a user waypoint that can be dragged.
+async function importRoute() {
+  const res = await window.ship.importRoute();
+  if (!res.ok) {
+    if (res.error) alert(`Cannot import the route: ${res.error}`);
+    return;
+  }
+  planner.finishPlanning();
+  measure.stop();
+  const wps = res.waypoints.map((w) => ({ lat: w.lat, lon: w.lon, name: w.name }));
+  for (let i = 1; i < wps.length; i++) wps[i].lon = wps[i - 1].lon + NavCore.wrapLon(wps[i].lon - wps[i - 1].lon);
+  wps[0].start = true;
+  previewLayer.clearLayers();
+  planner.route = { waypoints: wps, active: 1, name: res.name || res.file };
+  planner.startNote = `imported ${res.file}`;
+  planner.progress = null;
+  planner.redraw();
+  planner.update();
+  planner.persist();
+  renderVoyage();
+  setFollow(false);
+  map.fitBounds(L.polyline(wps.map((w) => [w.lat, w.lon])).getBounds(), { paddingTopLeft: [60, 100], paddingBottomRight: [380, 60] });
+  $('status-map').textContent = `Route imported: ${res.name || res.file} · ${wps.length} waypoints`;
+}
+$('pb-import').onclick = importRoute;
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o' && !document.querySelector('dialog[open]')) {
+    e.preventDefault();
+    importRoute();
+  }
+});
 $('vb-speed').onclick = () => {
   document.querySelector(`input[name="speed-mode"][value="${etaSpeed ? 'manual' : 'avg'}"]`).checked = true;
   if (etaSpeed) $('speed-manual').value = etaSpeed;
@@ -746,25 +785,57 @@ function downloadOptions() {
     maxZoom: parseInt($('dl-max').value, 10),
     layers: $('dl-seamark').checked ? ['osm', 'seamark'] : ['osm'],
     radiusNm: parseFloat($('dl-radius').value) || 10,
+    coastOnly: $('dl-coast').checked,
     points: planner.points(),
     north: b.getNorth(), south: b.getSouth(), east: b.getEast(), west: b.getWest(),
   };
 }
 
+const dryRun = (o) => (o.mode === 'route' ? window.ship.downloadCorridor({ ...o, dryRun: true }) : window.ship.downloadArea({ ...o, dryRun: true }));
+
+// Highest max zoom whose tiles (from min zoom up) fit in the download limit.
+function fittingZoom(r, minZoom) {
+  let sum = 0, best = null;
+  for (let z = minZoom; r.perZoom[z] != null; z++) {
+    sum += r.perZoom[z];
+    if (sum > r.limit) break;
+    best = { zoom: z, count: sum };
+  }
+  return best;
+}
+
+let estimateSeq = 0;
 async function updateEstimate() {
   const o = downloadOptions();
-  if (o.mode !== 'route') {
-    $('dl-estimate').textContent = '';
-    return;
-  }
-  if (o.points.length < 2) {
+  const seq = ++estimateSeq;
+  $('dl-fit').hidden = true;
+  if (o.mode === 'route' && o.points.length < 2) {
     $('dl-estimate').textContent = 'Plan a route first (Route button).';
     return;
   }
-  const r = await window.ship.downloadCorridor({ ...o, dryRun: true });
-  $('dl-estimate').textContent = r.ok
-    ? `${r.count.toLocaleString('en-US')} tiles${r.count > r.limit ? ` — over the limit of ${r.limit}: lower the max zoom or the width` : ''}`
-    : r.error;
+  const r = await dryRun(o);
+  if (seq !== estimateSeq) return; // a newer estimate is on its way
+  if (!r.ok) {
+    $('dl-estimate').textContent = r.error;
+    return;
+  }
+  const n = (v) => v.toLocaleString('en-US');
+  if (r.count <= r.limit) {
+    $('dl-estimate').textContent = `${n(r.count)} tiles — ready to download.`;
+    return;
+  }
+  const fit = fittingZoom(r, o.minZoom);
+  $('dl-estimate').textContent = `${n(r.count)} tiles: more than the ${n(r.limit)} allowed per download by the free map servers.`;
+  if (fit) {
+    $('dl-fit').textContent = `Use max zoom ${fit.zoom} (${n(fit.count)} tiles)`;
+    $('dl-fit').hidden = false;
+    $('dl-fit').onclick = () => {
+      $('dl-max').value = fit.zoom;
+      updateEstimate();
+    };
+  } else {
+    $('dl-estimate').textContent += ' Raise the min zoom, narrow the corridor or zoom in.';
+  }
 }
 
 $('btn-download').onclick = () => {
@@ -777,18 +848,35 @@ $('download').addEventListener('change', updateEstimate);
 $('download').addEventListener('input', updateEstimate);
 $('dl-start').onclick = async () => {
   const o = downloadOptions();
+  if (o.mode === 'route' && o.points.length < 2) return;
+  // Over the limit: cap the max zoom instead of refusing.
+  const est = await dryRun(o);
+  let note = '';
+  if (est.ok && est.count > est.limit) {
+    const fit = fittingZoom(est, o.minZoom);
+    if (!fit) {
+      $('dl-progress').textContent = 'Still too many tiles even at the min zoom.';
+      return;
+    }
+    note = ` (max zoom lowered to ${fit.zoom} to stay within the limit)`;
+    o.maxZoom = fit.zoom;
+    $('dl-max').value = fit.zoom;
+  }
   $('dl-start').disabled = true;
-  $('dl-progress').textContent = 'Downloading…';
-  const res = o.mode === 'route'
-    ? await window.ship.downloadCorridor(o)
-    : await window.ship.downloadArea(o);
+  $('dl-progress').textContent = `Downloading…${note}`;
+  const res = o.mode === 'route' ? await window.ship.downloadCorridor(o) : await window.ship.downloadArea(o);
   $('dl-start').disabled = false;
-  $('dl-progress').textContent = res.ok
-    ? `Done: ${res.done} tiles${res.failed ? `, failed: ${res.failed}` : ''}`
-    : res.error;
+  if (!res.ok) {
+    $('dl-progress').textContent = res.error;
+  } else if (res.done && res.failed === res.done) {
+    $('dl-progress').textContent = `Nothing downloaded: ${res.error || 'no connection'}. Check the internet connection and try again.`;
+  } else {
+    $('dl-progress').textContent = `Done: ${res.done - res.failed} tiles saved${res.failed ? `, ${res.failed} failed (${res.error})` : ''}${note}. They now work offline.`;
+  }
+  updateEstimate();
 };
 window.ship.onDownloadProgress((p) => {
-  $('dl-progress').textContent = `Downloaded ${p.done}${p.failed ? `, failed ${p.failed}` : ''}…`;
+  $('dl-progress').textContent = `Downloading ${p.done} / ${p.total}${p.failed ? `, ${p.failed} failed` : ''}…`;
 });
 
 // --- Startup ---
@@ -858,4 +946,56 @@ $('update-go').onclick = async () => {
 };
 window.ship.onUpdateProgress((p) => {
   $('update-status').textContent = `downloading ${Math.round((100 * p.got) / (p.total || p.got))}%`;
+});
+
+// --- Right click: coordinates of any point ---
+
+map.on('contextmenu', (e) => {
+  const { lat, lng } = e.latlng.wrap();
+  const ddm = `${toDdm(lat, 'N', 'S')}  ${toDdm(lng, 'E', 'W')}`;
+  const dec = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  const d = formatDepth(world.depthAt(lat, lng));
+  const ship = shipPosition();
+  const rb = ship ? NavCore.rhumb([ship.lat, ship.lon], [lat, lng]) : null;
+  const popup = L.popup({ className: 'port-popup point-popup', maxWidth: 300 })
+    .setLatLng(e.latlng)
+    .setContent(`
+      <div class="port-title">${toDdm(lat, 'N', 'S')}<br>${toDdm(lng, 'E', 'W')}</div>
+      <div class="port-sub">${dec}</div>
+      <p>Chart depth: ${d.value}${d.unit ? ' ' + d.unit : ''}</p>
+      ${rb ? `<p>From ship: ${Voyage.fmtBrg(rb.bearing)} · ${Voyage.fmtNm(rb.distanceNm)} nm</p>` : ''}
+      <div class="pt-actions">
+        <button type="button" data-a="copy">Copy</button>
+        <button type="button" data-a="route">${planner.route ? 'Add waypoint' : 'Route here'}</button>
+        <button type="button" data-a="measure">Measure from here</button>
+      </div>`)
+    .openOn(map);
+  const el = popup.getElement();
+  el.querySelector('[data-a="copy"]').onclick = async (ev) => {
+    await window.ship.copyText(`${ddm}  (${dec})`);
+    ev.target.textContent = 'Copied ✓';
+  };
+  el.querySelector('[data-a="route"]').onclick = async () => {
+    map.closePopup();
+    if (planner.route) {
+      planner.addWaypoint([lat, lng]);
+      return;
+    }
+    await routerReady;
+    const from = shipPosition();
+    const r = from && router.route([from.lat, from.lon], [lat, lng], planner.avoid);
+    if (r) setRouteFromPoints(r.points, 'from ship');
+    else {
+      planner.startPlanning();
+      planner.addWaypoint([lat, lng]);
+    }
+  };
+  el.querySelector('[data-a="measure"]').onclick = () => {
+    map.closePopup();
+    if (planner.planning) planner.finishPlanning();
+    measure.start();
+    $('measure-bar').hidden = false;
+    $('btn-measure').classList.add('on');
+    measure.add([lat, lng]);
+  };
 });

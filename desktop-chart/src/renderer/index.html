@@ -34,6 +34,7 @@
     <div class="vb-actions">
       <button id="vb-edit" title="Edit route">Edit</button>
       <button id="vb-gpx" title="Export route as GPX">GPX</button>
+      <button id="vb-rtz" title="Export route for ECDIS (RTZ, IEC 61174)">RTZ</button>
       <button id="vb-end" title="Delete route">✕</button>
     </div>
   </div>
@@ -41,6 +42,7 @@
     <span class="pb-title">Route planning <small id="pb-start"></small></span>
     <span class="pb-hint"><kbd>Click</kbd> waypoint · <kbd>Shift</kbd>+click sea lanes · drag to move · right-click delete · <kbd>Enter</kbd> done</span>
     <label class="pb-arctic" title="Allow the Northwest Passage (ice!)"><input type="checkbox" id="pb-arctic"> Arctic</label>
+    <button id="pb-import" title="Import a route from ECDIS (.rtz) or GPX (Ctrl+O)">Import RTZ</button>
     <button id="pb-undo">Undo</button>
     <button id="pb-clear">Clear</button>
     <button id="pb-done" class="primary">Done</button>
@@ -311,7 +313,10 @@
       <label>Min zoom <input id="dl-min" type="number" min="1" max="17" value="9"></label>
       <label>Max zoom <input id="dl-max" type="number" min="1" max="17" value="13"></label>
       <label class="inline"><input id="dl-seamark" type="checkbox" checked> Seamarks (OpenSeaMap)</label>
+      <label class="inline" title="Over the open ocean a detailed tile is just blue: download only tiles within ~20 nm of a coast">
+        <input id="dl-coast" type="checkbox" checked> Coasts only (skip open-ocean tiles)</label>
       <p id="dl-estimate" class="muted"></p>
+      <button type="button" id="dl-fit" hidden></button>
       <p id="dl-progress" class="muted"></p>
       <menu>
         <button value="cancel">Close</button>
