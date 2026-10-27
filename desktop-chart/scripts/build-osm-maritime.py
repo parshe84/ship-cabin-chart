@@ -88,11 +88,13 @@ def scan_way_stripe(i):
     tags = tb.column('tags')
     look = lambda k: pc.map_lookup(tags, k, 'first')
     st, b, bt, mar, al = look('seamark:type'), look('boundary'), look('border_type'), look('maritime'), look('admin_level')
-    is_way = pc.equal(tb.column('type'), 'way')
-    tss = pc.is_in(st, value_set=pa.array(TSS_TYPES))
-    border = pc.and_(pc.equal(b, 'maritime'), pc.is_in(bt, value_set=pa.array(BORDER_TYPES)))
-    national = pc.and_(pc.and_(pc.equal(mar, 'yes'), pc.equal(b, 'administrative')), pc.equal(al, '2'))
-    mask = pc.fill_null(pc.and_(is_way, pc.or_(tss, pc.or_(border, national))), False)
+    # Missing tags are nulls, and null OR true is null in Arrow: turn every test into a plain bool first.
+    yes = lambda m: pc.fill_null(m, False)
+    is_way = yes(pc.equal(tb.column('type'), 'way'))
+    tss = yes(pc.is_in(st, value_set=pa.array(TSS_TYPES)))
+    border = pc.and_(yes(pc.equal(b, 'maritime')), yes(pc.is_in(bt, value_set=pa.array(BORDER_TYPES))))
+    national = pc.and_(pc.and_(yes(pc.equal(mar, 'yes')), yes(pc.equal(b, 'administrative'))), yes(pc.equal(al, '2')))
+    mask = pc.and_(is_way, pc.or_(tss, pc.or_(border, national)))
     idx = np.flatnonzero(mask.to_numpy(zero_copy_only=False))
     if not len(idx):
         return []
