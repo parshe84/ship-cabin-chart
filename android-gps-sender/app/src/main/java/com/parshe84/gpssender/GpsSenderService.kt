@@ -81,7 +81,7 @@ class GpsSenderService : Service(), LocationListener {
         port = intent?.getIntExtra(EXTRA_PORT, 10110) ?: 10110
 
         ServiceCompat.startForeground(
-            this, NOTIFICATION_ID, buildNotification("Передача на $host:$port"),
+            this, NOTIFICATION_ID, buildNotification(getString(R.string.notification_text, "$host:$port")),
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0,
         )
 
@@ -94,7 +94,7 @@ class GpsSenderService : Service(), LocationListener {
                 address = InetAddress.getByName(host)
                 socket = DatagramSocket().apply { broadcast = true }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(error = "Сеть: ${e.message}")
+                _state.value = _state.value.copy(error = getString(R.string.error_network, e.message))
             }
         }
 
@@ -107,7 +107,7 @@ class GpsSenderService : Service(), LocationListener {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
             != PackageManager.PERMISSION_GRANTED
         ) {
-            _state.value = _state.value.copy(error = "Нет разрешения на геолокацию")
+            _state.value = _state.value.copy(error = getString(R.string.error_no_permission))
             stopSelf()
             return
         }
@@ -139,7 +139,7 @@ class GpsSenderService : Service(), LocationListener {
                     error = null,
                 )
             } catch (e: Exception) {
-                _state.value = _state.value.copy(lastLocation = location, error = "Отправка: ${e.message}")
+                _state.value = _state.value.copy(lastLocation = location, error = getString(R.string.error_send, e.message))
             }
         }
     }
@@ -148,7 +148,7 @@ class GpsSenderService : Service(), LocationListener {
     override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) = Unit
 
     override fun onProviderDisabled(provider: String) {
-        _state.value = _state.value.copy(error = "GPS выключен в настройках телефона")
+        _state.value = _state.value.copy(error = getString(R.string.error_gps_off))
     }
 
     override fun onProviderEnabled(provider: String) {
@@ -175,7 +175,7 @@ class GpsSenderService : Service(), LocationListener {
         val nm = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             nm.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Передача GPS", NotificationManager.IMPORTANCE_LOW)
+                NotificationChannel(CHANNEL_ID, getString(R.string.notification_channel), NotificationManager.IMPORTANCE_LOW)
             )
         }
         val openApp = PendingIntent.getActivity(

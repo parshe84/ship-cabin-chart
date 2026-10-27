@@ -1,14 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">GPS для каюты</string>
-    <string name="hint">Положите телефон на иллюминатор и подключите его к той же Wi-Fi сети, что и компьютер (или раздайте точку доступа с телефона).</string>
-    <string name="host_hint">IP компьютера (255.255.255.255 — всем в сети)</string>
-    <string name="port_hint">UDP-порт</string>
-    <string name="keep_screen_on">Не гасить экран</string>
-    <string name="start">Начать передачу</string>
-    <string name="stop">Остановить</string>
-    <string name="stopped">Передача остановлена</string>
-    <string name="waiting_fix">Жду спутники… (→ %1$s, спутников: %2$d)</string>
-    <string name="sending">Передаётся → %1$s\nпакетов: %2$d, спутников: %3$d</string>
-    <string name="need_location">Без доступа к геолокации передача невозможна</string>
+    <string name="app_name">Cabin GPS</string>
+    <string name="hint">Place the phone on the porthole and connect it to the same Wi-Fi network as the computer (or share a hotspot from the phone).</string>
+    <string name="host_hint">Computer IP (255.255.255.255 = everyone on the network)</string>
+    <string name="port_hint">UDP port</string>
+    <string name="keep_screen_on">Keep screen on</string>
+    <string name="start">Start sending</string>
+    <string name="stop">Stop</string>
+    <string name="stopped">Not sending</string>
+    <string name="waiting_fix">Waiting for satellites… (→ %1$s, satellites: %2$d)</string>
+    <string name="sending">Sending → %1$s\npackets: %2$d, satellites: %3$d</string>
+    <string name="need_location">Location permission is required to send the position</string>
+    <string name="notification_channel">GPS sending</string>
+    <string name="notification_text">Sending to %1$s</string>
+    <string name="error_network">Network: %1$s</string>
+    <string name="error_send">Send failed: %1$s</string>
+    <string name="error_no_permission">No location permission</string>
+    <string name="error_gps_off">GPS is turned off in phone settings</string>
 </resources>

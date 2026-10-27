@@ -1,58 +1,72 @@
 # Ship Cabin Chart
 
-Позиция судна на карте прямо в каюте. Телефон лежит на иллюминаторе и ловит GPS,
-а ноутбук в каюте показывает судно на карте.
+See your ship's position on a world nautical chart from your cabin. An Android phone on the
+porthole picks up GPS, and a laptop in the cabin shows the ship on the chart.
 
 ```
- [Android-телефон на иллюминаторе]  ── Wi-Fi, UDP :10110, NMEA 0183 ──▶  [Ноутбук: Ship Cabin Chart]
-   android-gps-sender                                                     desktop-chart (Electron)
+ [Android phone on the porthole]  ── Wi-Fi, UDP :10110, NMEA 0183 ──▶  [Laptop: Ship Cabin Chart]
+   android-gps-sender                                                   desktop-chart (Electron)
 ```
 
-## Состав
+## Components
 
-| Папка | Что это |
+| Folder | What it is |
 |---|---|
-| `android-gps-sender/` | Android-приложение «GPS для каюты». Берёт координаты с GPS телефона и рассылает NMEA-сообщения (`RMC`, `GGA`, `VTG`) по UDP. Работает в фоне с выключенным экраном. |
-| `desktop-chart/` | Портативное приложение на Electron: карта OpenStreetMap и морские знаки OpenSeaMap, судно с курсом, пройденный след, скорость в узлах, координаты в формате «градусы и минуты». |
+| `android-gps-sender/` | **Cabin GPS** Android app. Reads the phone's GPS and broadcasts NMEA sentences (`RMC`, `GGA`, `VTG`) over UDP. Keeps running in the background with the screen off. |
+| `desktop-chart/` | Portable Electron app. Shows a built-in offline world chart, the ship with its heading, the track, speed in knots and coordinates in degrees/minutes. |
 
-## Как пользоваться
+## Maps
 
-1. Подключите телефон и ноутбук к одной Wi-Fi сети. Без судового Wi-Fi включите на телефоне точку доступа и подключите к ней ноутбук.
-2. Запустите на ноутбуке **ShipCabinChart-portable.exe**. Установка не нужна, данные хранятся в папке `ShipCabinChart-data` рядом с exe.
-3. Откройте на телефоне **«GPS для каюты»** и нажмите «Начать передачу». Адрес по умолчанию `255.255.255.255` рассылает данные всем в сети. Если так не работает, введите IP ноутбука: он показан в «Настройках» desktop-приложения.
-4. При первом запуске Windows спросит про брандмауэр. Разрешите доступ для частной сети.
+**Built-in world chart, works fully offline.** Made from [Natural Earth](https://www.naturalearthdata.com/)
+1:10m data (public domain):
 
-### Карты без интернета
+- ocean depth bands (bathymetry) from 0 to 10,000 m
+- land, coastlines, islands, glaciers and ice shelves
+- lakes, rivers, reefs and country borders
+- names of 306 oceans, seas, bays and straits
+- 1,081 seaports and major cities
+- latitude/longitude grid that gets finer as you zoom in
 
-В море интернета нет, поэтому карты нужно скачать заранее, в порту:
-выделите район на карте → «Скачать карту района» → выберите масштабы.
-Всё, что вы уже просматривали, тоже сохраняется в кэш автоматически.
-Лимит — 3000 тайлов за раз (правила использования бесплатных серверов OSM).
+It covers the whole planet and is sharpest at ocean and regional scale (roughly zoom 1–9).
 
-### Сторонние GPS-приложения
+**Detailed coastal maps (zoom 9+).** OpenStreetMap and OpenSeaMap seamarks are drawn on top whenever
+they are available, either online or from the local cache. Before a voyage, open the area in port and use
+**Download detailed area**. Every tile you have looked at is cached too. Each download is limited to
+3,000 tiles, as required by the free OSM tile servers' usage policy.
 
-Вместо нашего Android-приложения подойдёт любое, которое отдаёт NMEA:
-- по UDP на порт 10110: ничего настраивать не нужно;
-- по TCP, как «Share GPS» или «GPS2IP»: укажите IP телефона и порт в «Настройках».
+To rebuild the world chart from the latest Natural Earth release, run `npm run build-map`.
 
-## Сборка
+## How to use
 
-GitHub Actions собирает всё автоматически при каждом push: APK, portable `.exe` для Windows
-и AppImage для Linux. Готовые файлы лежат во вкладке **Actions** в разделе *Artifacts* нужного запуска.
+1. Connect the phone and the laptop to the same Wi-Fi network. Without ship Wi-Fi, turn on the phone's hotspot and connect the laptop to it.
+2. On the laptop, run **ShipCabinChart-portable.exe**. Nothing to install: data is stored in `ShipCabinChart-data` next to the exe.
+3. On the phone, open **Cabin GPS** and tap **Start sending**. The default address `255.255.255.255` broadcasts to the whole network. If that doesn't work, enter the laptop's IP, which is shown in the desktop app's **Settings**.
+4. On first launch Windows asks about the firewall. Allow access for private networks.
 
-Локально:
+### Third-party GPS apps
+
+Any app that outputs NMEA works too:
+- UDP to port 10110: nothing to configure;
+- TCP (for example "Share GPS" or "GPS2IP"): enter the phone's IP and port in **Settings**.
+
+## Building
+
+GitHub Actions builds the APK, a Windows portable `.exe` and a Linux AppImage on every push.
+Download them from the **Actions** tab, under *Artifacts* of the run.
+
+Locally:
 
 ```bash
 # Desktop
 cd desktop-chart
 npm install
-npm start            # запуск
-npm test             # тесты NMEA-парсера
+npm start            # run
+npm test             # NMEA parser tests
 npm run dist:win     # portable .exe
 
-# Android (нужен Android SDK)
+# Android (requires Android SDK)
 cd android-gps-sender
 ./gradlew assembleRelease   # app/build/outputs/apk/release/
 ```
 
-> ⚠️ Это вспомогательное средство и не заменяет штатное навигационное оборудование судна.
+> ⚠️ This is an aid only. It does not replace the ship's official navigation equipment or charts.

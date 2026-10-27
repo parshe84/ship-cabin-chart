@@ -124,9 +124,9 @@ class MainActivity : AppCompatActivity() {
         positionText.text = if (loc == null) "—" else buildString {
             appendLine(ddm(loc.latitude, 'N', 'S'))
             appendLine(ddm(loc.longitude, 'E', 'W'))
-            if (loc.hasSpeed()) append(String.format(Locale.US, "%.1f уз  ", loc.speed * 1.943844))
+            if (loc.hasSpeed()) append(String.format(Locale.US, "%.1f kn  ", loc.speed * 1.943844))
             if (loc.hasBearing()) append(String.format(Locale.US, "%03.0f°  ", loc.bearing))
-            if (loc.hasAccuracy()) append(String.format(Locale.US, "±%.0f м", loc.accuracy))
+            if (loc.hasAccuracy()) append(String.format(Locale.US, "±%.0f m", loc.accuracy))
         }
     }
 

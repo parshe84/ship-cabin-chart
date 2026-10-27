@@ -2,18 +2,34 @@
 
 const $ = (id) => document.getElementById(id);
 
-const map = L.map('map', { zoomControl: true }).setView([59.93, 30.2], 6);
+const map = L.map('map', { zoomControl: true, worldCopyJump: true, maxZoom: 18 }).setView([30, 0], 3);
 
-L.tileLayer('tilecache://osm/{z}/{x}/{y}.png', {
+// Built-in offline world chart: always available, no internet needed.
+const world = WorldChart.createWorldChart(map, window.ship.loadWorldLayer);
+world.chart.addTo(map);
+world.labels.addTo(map);
+world.ready
+  .then(() => { $('status-map').textContent = 'World chart: offline, built in'; })
+  .catch((err) => { $('status-map').textContent = `World chart failed: ${err.message}`; });
+
+// Detailed coastal maps on top when zoomed in: online, or from the download cache.
+// Missing tiles are transparent, so the world chart shows through.
+const osm = L.tileLayer('tilecache://osm/{z}/{x}/{y}.png', {
+  minZoom: 9,
   maxZoom: 18,
   attribution: '© OpenStreetMap contributors',
 }).addTo(map);
 const seamarks = L.tileLayer('tilecache://seamark/{z}/{x}/{y}.png', {
+  minZoom: 9,
   maxZoom: 18,
   attribution: '© OpenSeaMap',
 }).addTo(map);
-L.control.layers(null, { 'Морские знаки': seamarks }, { position: 'topleft' }).addTo(map);
-L.control.scale({ metric: true, imperial: false }).addTo(map);
+L.control.layers(null, {
+  'Place names, ports': world.labels,
+  'OpenStreetMap detail (zoom 9+)': osm,
+  'Seamarks (zoom 9+)': seamarks,
+}, { position: 'topleft' }).addTo(map);
+L.control.scale({ metric: true, imperial: true }).addTo(map);
 
 const shipSvg = (cog) => `
   <svg width="36" height="36" viewBox="-18 -18 36 36" style="transform: rotate(${cog || 0}deg)">
@@ -80,7 +96,7 @@ window.ship.onFix((fix) => {
     if (fix[key] != null) state[key] = fix[key];
   }
   state.lastFix = fix.receivedAt;
-  $('source').textContent = `Источник: ${fix.source}`;
+  $('source').textContent = `Source: ${fix.source}`;
   if (fix.lat != null && fix.lon != null) addTrackPoint(fix.lat, fix.lon);
   render();
 });
@@ -96,8 +112,8 @@ setInterval(() => {
   const dot = $('link-dot');
   dot.className = 'dot' + (age < 5 ? ' ok' : age < 30 ? ' stale' : '');
   $('age').textContent = Number.isFinite(age)
-    ? `Последние данные: ${age < 60 ? Math.round(age) + ' с' : Math.round(age / 60) + ' мин'} назад`
-    : 'Нет данных от телефона';
+    ? `Last data: ${age < 60 ? Math.round(age) + ' s' : Math.round(age / 60) + ' min'} ago`
+    : 'No data from phone';
 }, 1000);
 
 setInterval(() => {
@@ -120,7 +136,7 @@ $('btn-follow').onclick = () => {
 map.on('dragstart', () => setFollow(false));
 
 $('btn-clear').onclick = () => {
-  if (!confirm('Очистить пройденный след?')) return;
+  if (!confirm('Clear the recorded track?')) return;
   track = [];
   trackLine.setLatLngs([]);
   window.ship.saveTrack(track);
@@ -128,7 +144,7 @@ $('btn-clear').onclick = () => {
 
 $('btn-settings').onclick = async () => {
   const s = await window.ship.getSettings();
-  $('my-ip').textContent = s.addresses.join(', ') || 'нет сети';
+  $('my-ip').textContent = s.addresses.join(', ') || 'no network';
   $('udp-port').value = s.udpPort;
   $('tcp-host').value = s.tcpHost;
   $('tcp-port').value = s.tcpPort;
@@ -154,17 +170,17 @@ $('dl-start').onclick = async () => {
   const maxZoom = parseInt($('dl-max').value, 10);
   const layers = $('dl-seamark').checked ? ['osm', 'seamark'] : ['osm'];
   $('dl-start').disabled = true;
-  $('dl-progress').textContent = 'Скачивание…';
+  $('dl-progress').textContent = 'Downloading…';
   const res = await window.ship.downloadArea({
     north: b.getNorth(), south: b.getSouth(), east: b.getEast(), west: b.getWest(), minZoom, maxZoom, layers,
   });
   $('dl-start').disabled = false;
   $('dl-progress').textContent = res.ok
-    ? `Готово: ${res.done} тайлов${res.failed ? `, ошибок: ${res.failed}` : ''}`
+    ? `Done: ${res.done} tiles${res.failed ? `, failed: ${res.failed}` : ''}`
     : res.error;
 };
 window.ship.onDownloadProgress((p) => {
-  $('dl-progress').textContent = `Скачано ${p.done}${p.failed ? `, ошибок ${p.failed}` : ''}…`;
+  $('dl-progress').textContent = `Downloaded ${p.done}${p.failed ? `, failed ${p.failed}` : ''}…`;
 });
 
 // --- Startup ---

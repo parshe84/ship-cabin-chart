@@ -64,8 +64,8 @@ function startUdp() {
     const text = msg.toString('ascii');
     handleData(text.endsWith('\n') ? text : text + '\n', `UDP ${rinfo.address}`);
   });
-  udpSocket.on('error', (err) => send('status', { udp: `ошибка: ${err.message}` }));
-  udpSocket.bind(settings.udpPort, () => send('status', { udp: `слушаю порт ${settings.udpPort}` }));
+  udpSocket.on('error', (err) => send('status', { udp: `error: ${err.message}` }));
+  udpSocket.bind(settings.udpPort, () => send('status', { udp: `listening on port ${settings.udpPort}` }));
 }
 
 function startTcp() {
@@ -73,19 +73,19 @@ function startTcp() {
   if (tcpClient) tcpClient.destroy();
   tcpClient = null;
   if (!settings.tcpHost) {
-    send('status', { tcp: 'выключено' });
+    send('status', { tcp: 'off' });
     return;
   }
   const client = tcp.connect(settings.tcpPort, settings.tcpHost);
   tcpClient = client;
   client.setTimeout(15000);
-  client.on('connect', () => send('status', { tcp: `подключено к ${settings.tcpHost}:${settings.tcpPort}` }));
+  client.on('connect', () => send('status', { tcp: `connected to ${settings.tcpHost}:${settings.tcpPort}` }));
   client.on('data', (chunk) => handleData(chunk, `TCP ${settings.tcpHost}`));
-  client.on('timeout', () => client.destroy(new Error('нет данных 15 с')));
-  client.on('error', (err) => send('status', { tcp: `ошибка: ${err.message}` }));
+  client.on('timeout', () => client.destroy(new Error('no data for 15 s')));
+  client.on('error', (err) => send('status', { tcp: `error: ${err.message}` }));
   client.on('close', () => {
     if (tcpClient !== client) return;
-    send('status', { tcp: 'переподключение…' });
+    send('status', { tcp: 'reconnecting…' });
     tcpReconnectTimer = setTimeout(startTcp, 3000);
   });
 }
@@ -149,7 +149,7 @@ ipcMain.handle('download-area', async (_e, { north, south, east, west, minZoom, 
     }
   }
   if (jobs.length > MAX_DOWNLOAD_TILES) {
-    return { ok: false, error: `Слишком много тайлов (${jobs.length}). Уменьшите район или макс. масштаб (лимит ${MAX_DOWNLOAD_TILES}).` };
+    return { ok: false, error: `Too many tiles (${jobs.length}). Zoom in or lower the max zoom (limit ${MAX_DOWNLOAD_TILES}).` };
   }
   let done = 0, failed = 0;
   const workers = Array.from({ length: 2 }, async () => {
@@ -162,6 +162,14 @@ ipcMain.handle('download-area', async (_e, { north, south, east, west, minZoom, 
   });
   await Promise.all(workers);
   return { ok: true, done, failed };
+});
+
+// Bundled offline world chart (Natural Earth), see scripts/build-world-map.js.
+const WORLD_LAYERS = new Set(['bathymetry', 'land', 'coastline', 'ice', 'lakes', 'rivers', 'borders', 'reefs',
+  'marine-labels', 'ports', 'places']);
+ipcMain.handle('load-world-layer', (_e, name) => {
+  if (!WORLD_LAYERS.has(name)) throw new Error(`unknown layer ${name}`);
+  return fs.promises.readFile(path.join(__dirname, 'maps', 'world', `${name}.json`), 'utf8');
 });
 
 ipcMain.handle('get-settings', () => ({ ...settings, addresses: localAddresses(), dataDir }));

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy"
@@ -14,71 +14,75 @@
   <aside id="panel">
     <div class="row title">
       <span id="link-dot" class="dot"></span>
-      <span>Позиция судна</span>
+      <span>Ship position</span>
     </div>
 
     <div class="big" id="lat">—</div>
     <div class="big" id="lon">—</div>
 
     <div class="grid">
-      <div><label>Скорость</label><b id="sog">—</b><small>уз</small></div>
-      <div><label>Курс</label><b id="cog">—</b><small>°</small></div>
-      <div><label>Спутники</label><b id="sats">—</b></div>
-      <div><label>Время (UTC)</label><b id="time">—</b></div>
+      <div><label>Speed (SOG)</label><b id="sog">—</b><small>kn</small></div>
+      <div><label>Course (COG)</label><b id="cog">—</b><small>°</small></div>
+      <div><label>Satellites</label><b id="sats">—</b></div>
+      <div><label>Time (UTC)</label><b id="time">—</b></div>
     </div>
 
-    <div class="muted" id="age">Нет данных от телефона</div>
+    <div class="muted" id="age">No data from phone</div>
     <div class="muted" id="source"></div>
 
     <div class="buttons">
-      <button id="btn-follow" class="toggle">Следить за судном</button>
-      <button id="btn-clear">Очистить след</button>
-      <button id="btn-download">Скачать карту района</button>
-      <button id="btn-settings">Настройки</button>
+      <button id="btn-follow" class="toggle">Follow ship</button>
+      <button id="btn-clear">Clear track</button>
+      <button id="btn-download">Download detailed area</button>
+      <button id="btn-settings">Settings</button>
     </div>
 
+    <div class="muted small" id="status-map">Loading world chart…</div>
     <div class="muted small" id="status-udp"></div>
     <div class="muted small" id="status-tcp"></div>
   </aside>
 
   <dialog id="settings">
     <form method="dialog">
-      <h3>Подключение к телефону</h3>
-      <p class="muted small">IP этого компьютера: <b id="my-ip"></b><br>
-        Укажите его в Android-приложении (или оставьте широковещательный 255.255.255.255).</p>
-      <label>UDP-порт (приём NMEA)
+      <h3>Phone connection</h3>
+      <p class="muted small">This computer's IP: <b id="my-ip"></b><br>
+        Enter it in the Android app (or keep the broadcast address 255.255.255.255).</p>
+      <label>UDP port (NMEA input)
         <input id="udp-port" type="number" min="1" max="65535">
       </label>
-      <label>TCP: IP телефона (для сторонних приложений вроде «Share GPS», пусто — выкл.)
+      <label>TCP: phone IP (for third-party apps like "Share GPS"; empty = off)
         <input id="tcp-host" type="text" placeholder="192.168.43.1">
       </label>
-      <label>TCP-порт
+      <label>TCP port
         <input id="tcp-port" type="number" min="1" max="65535">
       </label>
-      <p class="muted small">Папка данных: <span id="data-dir"></span></p>
+      <p class="muted small">Data folder: <span id="data-dir"></span></p>
       <menu>
-        <button value="cancel">Отмена</button>
-        <button id="settings-save" value="save">Сохранить</button>
+        <button value="cancel">Cancel</button>
+        <button id="settings-save" value="save">Save</button>
       </menu>
     </form>
   </dialog>
 
   <dialog id="download">
     <form method="dialog">
-      <h3>Скачать карту для работы без интернета</h3>
-      <p class="muted small">Скачивается видимая область карты. Делайте это в порту, пока есть интернет.</p>
-      <label>Мин. масштаб <input id="dl-min" type="number" min="1" max="17" value="6"></label>
-      <label>Макс. масштаб <input id="dl-max" type="number" min="1" max="17" value="12"></label>
-      <label class="inline"><input id="dl-seamark" type="checkbox" checked> морские знаки (OpenSeaMap)</label>
+      <h3>Download detailed map for offline use</h3>
+      <p class="muted small">The world chart is built in and always works offline.
+        This downloads detailed OpenStreetMap tiles for the visible area, so do it in port while you have internet.</p>
+      <label>Min zoom <input id="dl-min" type="number" min="1" max="17" value="9"></label>
+      <label>Max zoom <input id="dl-max" type="number" min="1" max="17" value="13"></label>
+      <label class="inline"><input id="dl-seamark" type="checkbox" checked> Seamarks (OpenSeaMap)</label>
       <p id="dl-progress" class="muted small"></p>
       <menu>
-        <button value="cancel">Закрыть</button>
-        <button id="dl-start" type="button">Скачать</button>
+        <button value="cancel">Close</button>
+        <button id="dl-start" type="button">Download</button>
       </menu>
     </form>
   </dialog>
 
   <script src="../../node_modules/leaflet/dist/leaflet.js"></script>
+  <script src="../../node_modules/geojson-vt/geojson-vt.js"></script>
+  <script src="world-chart.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

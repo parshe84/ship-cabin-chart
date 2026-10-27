@@ -86,3 +86,17 @@ dialog input[type="text"], dialog input[type="number"] {
 dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; }
 
 .ship-icon { transition: transform 0.3s; }
+
+#map { background: #225b90; }
+
+.chart-label span {
+  position: absolute;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  text-shadow: 0 0 3px rgba(255, 255, 255, 0.9), 0 0 2px rgba(255, 255, 255, 0.9);
+}
+.chart-label.ocean span { color: #0d2f55; font: italic 600 15px Georgia, serif; letter-spacing: 3px; text-transform: uppercase; }
+.chart-label.sea span { color: #1a4a7a; font: italic 12px Georgia, serif; letter-spacing: 1px; }
+.chart-label.port span { color: #7a1f1f; font: 600 11px system-ui, sans-serif; }
+.chart-label.place span { color: #4a3a22; font: 11px system-ui, sans-serif; }

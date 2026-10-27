@@ -1,29 +1,33 @@
 {
   "name": "ship-cabin-chart",
   "productName": "Ship Cabin Chart",
-  "version": "0.1.0",
-  "description": "Позиция судна на карте: принимает NMEA от Android-телефона по Wi-Fi",
+  "version": "0.2.0",
+  "description": "Ship position on a world nautical chart, received as NMEA from an Android phone over Wi-Fi",
   "main": "src/main.js",
   "author": "parshe84",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
     "test": "node --test test/*.test.js",
+    "build-map": "node scripts/build-world-map.js",
     "dist:win": "electron-builder --win portable",
     "dist:linux": "electron-builder --linux AppImage"
   },
   "dependencies": {
+    "geojson-vt": "4.0.2",
     "leaflet": "1.9.4"
   },
   "devDependencies": {
     "electron": "33.2.1",
-    "electron-builder": "25.1.8"
+    "electron-builder": "25.1.8",
+    "mapshaper": "0.6.102"
   },
   "build": {
     "appId": "com.parshe84.shipcabinchart",
     "files": [
       "src/**/*",
-      "node_modules/leaflet/dist/**/*"
+      "node_modules/leaflet/dist/**/*",
+      "node_modules/geojson-vt/geojson-vt.js"
     ],
     "win": {
       "target": "portable"
