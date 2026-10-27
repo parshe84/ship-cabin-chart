@@ -1,1 +1,1 @@
-{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[136.075663,20.423846]},"properties":{"c":"LIGHTS","a":{"OBJNAM":"\u6c96\u30ce\u9ce5\u5cf6\u706f\u53f0"},"id":0}}]}
+{"k":["BOYSPP","LIGHTS"],"f":[[0,132.223,20.949,{"OBJNAM":"DART 52404","BOYSHP":"2"}],[1,132.223,20.949,{"LITCHR":"2","SIGGRP":"(4)","SIGPER":"20","COLOUR":"6"}],[1,130.007272,28.333382,{"LITCHR":"2","SIGPER":"5","VALNMR":"11","HEIGHT":"19","COLOUR":"3","OBJNAM":"Somati Gyoko"}],[1,136.075712,20.423943,{"OBJNAM":"沖ノ鳥島灯台"}]]}

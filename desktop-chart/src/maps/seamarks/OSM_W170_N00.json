@@ -1,1 +1,1 @@
-{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-162.349361,6.402271]},"properties":{"c":"WRECKS","a":{},"id":0}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-160.402726,4.682895]},"properties":{"c":"SMCFAC","a":{},"id":1}}]}
+{"k":["SMCFAC","WRECKS"],"f":[[0,-160.402726,4.682895],[1,-162.107192,5.878549,{"WATLEV":"2","CATWRK":"5"}]]}

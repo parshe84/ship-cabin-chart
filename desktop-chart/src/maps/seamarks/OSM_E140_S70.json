@@ -1,1 +1,1 @@
-{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[140.000987,-66.667227]},"properties":{"c":"LNDMRK","a":{"OBJNAM":"M\u00e2t Ionosph\u00e9rique","CATLMK":"17"},"id":0}}]}
+{"k":["LNDMRK"],"f":[[0,140.000987,-66.667227,{"OBJNAM":"Mât Ionosphérique","CATLMK":"17"}],[0,140.008934,-66.658026,{"OBJNAM":"Vigie","CATLMK":"17"}]]}

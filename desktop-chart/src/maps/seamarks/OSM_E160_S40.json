@@ -1,1 +1,1 @@
-{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[168.511456,-37.953403]},"properties":{"c":"UWTROC","a":{"WATLEV":"3"},"id":0}}]}
+{"k":["OBSTRN","UWTROC"],"f":[[0,167.907862,-30.375721,{"WATLEV":"3"}],[0,167.392486,-33.764406,{"WATLEV":"3"}],[1,168.511456,-37.953403,{"WATLEV":"3"}],[0,168.420133,-34.383043,{"WATLEV":"3"}],[0,165.962868,-35.652462,{"WATLEV":"3"}]]}

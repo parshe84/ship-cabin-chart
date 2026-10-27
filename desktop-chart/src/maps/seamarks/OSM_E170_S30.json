@@ -1,1 +1,1 @@
-{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[174.632663,-21.735897]},"properties":{"c":"WRECKS","a":{"CATWRK":"5"},"id":0}}]}
+{"k":["OBSTRN","WRECKS"],"f":[[1,174.632663,-21.735897,{"CATWRK":"5"}],[0,176.675416,-20.227979,{"WATLEV":"3"}],[0,176.66844,-20.341204,{"WATLEV":"3"}],[0,176.904644,-20.378654,{"WATLEV":"3"}],[0,173.649475,-21.581502,{"WATLEV":"3"}],[0,174.104272,-27.169097,{"WATLEV":"3"}]]}

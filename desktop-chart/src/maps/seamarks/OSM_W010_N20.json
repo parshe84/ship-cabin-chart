@@ -1,1 +1,1 @@
-{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-5.627351,29.830568]},"properties":{"c":"GATCON","a":{},"id":0}}]}
+{"k":["LIGHTS"],"f":[[0,-9.966667,29.666667,{"LITCHR":"2","SIGGRP":"(2+1)","SIGPER":"12","VALNMR":"20","HEIGHT":"53","COLOUR":"1","OBJNAM":"Cap d'Aglou"}]]}

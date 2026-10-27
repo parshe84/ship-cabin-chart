@@ -5,7 +5,7 @@ harbours, anchorages, fog signals … mapped with the OpenSeaMap seamark:* tags.
 
 The tags follow the S-57 object model, so each node becomes an S-57-like feature
 ({c: 'BOYLAT', a: {COLOUR: '4', ...}}) that renderer/enc-layer.js draws with its S-52 symbology.
-Features are grouped in 10°x10° squares, listed in index.json, and loaded only when visible.
+Features are grouped in 10°x10° squares (compact JSON, see below), listed in index.json, loaded only when visible.
 
 Reads the Daylight Map Distribution of OSM (Parquet, AWS Open Data s3://daylight-openstreetmap): only the
 tags and positions of tagged nodes are fetched.
@@ -250,8 +250,8 @@ def light_attrs(t, prefix):
     return {k: v for k, v in a.items() if v}
 
 
-# Inland-waterway objects that only clutter a seagoing chart.
-SKIP = {'GATCON', 'DISMAR', 'NOTMRK', 'BRIDGE', 'CRANES', 'BERTHS', 'CHKPNT', 'LOKBSN', 'HRBBSN', 'DRYDOC'}
+# Inland-waterway and marina objects (gates, km marks, mooring posts, piles) that only clutter a seagoing chart.
+SKIP = {'MORFAC', 'PILPNT', 'GATCON', 'DISMAR', 'NOTMRK', 'BRIDGE', 'CRANES', 'BERTHS', 'CHKPNT', 'LOKBSN', 'HRBBSN', 'DRYDOC'}
 
 
 def convert(node):
@@ -345,11 +345,11 @@ def main():
     index = []
     for (sx, sy), feats in sorted(squares.items()):
         name = f'OSM_{"E" if sx >= 0 else "W"}{abs(sx):03d}_{"N" if sy >= 0 else "S"}{abs(sy):02d}'
-        geo = {'type': 'FeatureCollection', 'features': [
-            {'type': 'Feature', 'geometry': {'type': 'Point', 'coordinates': f['p']}, 'properties': {'c': f['c'], 'a': f['a'], 'id': i}}
-            for i, f in enumerate(feats)]}
+        # Compact: {k: [classes], f: [[class index, lon, lat, attributes?]]}; enc-layer.js expands it.
+        classes = sorted({f['c'] for f in feats})
+        rows = [[classes.index(f['c']), f['p'][0], f['p'][1]] + ([f['a']] if f['a'] else []) for f in feats]
         with open(os.path.join(OUT, f'{name}.json'), 'w') as fh:
-            json.dump(geo, fh, separators=(',', ':'))
+            json.dump({'k': classes, 'f': rows}, fh, separators=(',', ':'), ensure_ascii=False)
         lons = [f['p'][0] for f in feats]
         lats = [f['p'][1] for f in feats]
         index.append({'name': name, 'bbox': [min(lons), min(lats), max(lons), max(lats)], 'features': len(feats)})

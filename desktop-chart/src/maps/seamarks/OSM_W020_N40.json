@@ -1,1 +1,1 @@
-{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-16.2,48.166123]},"properties":{"c":"WRECKS","a":{"OBJNAM":"Bismarck"},"id":0}}]}
+{"k":["BOYSPP","LIGHTS","WRECKS"],"f":[[2,-16.2,48.166123,{"OBJNAM":"Bismarck"}],[0,-12.441667,48.591667,{"OBJNAM":"K1","COLOUR":"6","BOYSHP":"7"}],[1,-12.441667,48.591667,{"LITCHR":"2","SIGGRP":"(5)","SIGPER":"20","COLOUR":"6"}]]}

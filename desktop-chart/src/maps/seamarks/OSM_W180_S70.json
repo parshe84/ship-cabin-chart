@@ -1,1 +1,1 @@
-{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-179.911093,-67.380634]},"properties":{"c":"UWTROC","a":{"WATLEV":"3"},"id":0}}]}
+{"k":["UWTROC"],"f":[[0,-179.911093,-67.380634,{"WATLEV":"3"}]]}

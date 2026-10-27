@@ -1,1 +1,1 @@
-{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[50.983338,9.53333]},"properties":{"c":"WRECKS","a":{"OBJNAM":"U-852"},"id":0}},{"type":"Feature","geometry":{"type":"Point","coordinates":[50.488467,8.936311]},"properties":{"c":"WRECKS","a":{},"id":1}}]}
+{"k":["WRECKS"],"f":[[0,50.983338,9.53333,{"OBJNAM":"U-852"}],[0,50.488467,8.936311]]}

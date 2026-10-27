@@ -21,7 +21,7 @@
       return r >= 18 ? 6 : r >= 12 ? 8 : r >= 7 ? 10 : 11;
     }
     if (c === 'LITVES' || c === 'LITFLT') return 8;
-    if (c.startsWith('BOY') || c.startsWith('BCN')) return 11;
+    if (c.startsWith('BOY') || c.startsWith('BCN')) return 12;
     if (c === 'WRECKS' || c === 'UWTROC' || c === 'OBSTRN') return 11;
     if (c === 'HRBFAC' || c === 'ACHARE' || c === 'PILBOP') return 9;
     return 12;
@@ -175,6 +175,15 @@
     return best;
   }
 
+  // Built-in seamark squares are stored compactly: { k: [classes], f: [[class, lon, lat, attrs?]] }.
+  function expand(data) {
+    if (!data.f) return data;
+    return {
+      type: 'FeatureCollection',
+      features: data.f.map((r, i) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [r[1], r[2]] }, properties: { c: data.k[r[0]], a: r[3] || {}, id: i } })),
+    };
+  }
+
   async function ensure(name) {
     const c = cells.get(name);
     if (!c) return null;
@@ -183,7 +192,7 @@
     if (!c.loading) {
       c.loading = loadCell(name)
         .then((json) => {
-          c.loaded = prepare(name, JSON.parse(json), c.info.builtin);
+          c.loaded = prepare(name, expand(JSON.parse(json)), c.info.builtin);
           evict();
           return c.loaded;
         })
@@ -548,7 +557,9 @@
     const a = p.a;
     const depth = num(a.VALSOU);
     const deepWater = p.env == null || p.env >= S.safety;
-    const isolated = deepWater && (depth != null ? depth < S.safety : num(a.WATLEV) === 3);
+    // Built-in OSM dangers (p.mz) carry no surrounding depth area: only a known depth counts.
+    const isolated = p.mz ? depth != null && depth < S.safety
+      : deepWater && (depth != null ? depth < S.safety : num(a.WATLEV) === 3);
     if (!isolated && z < 13) return; // ordinary rocks and wrecks only when zoomed in
     ctx.setLineDash([]);
     if (isolated) {
@@ -634,9 +645,12 @@
       const scamin = num(a.SCAMIN);
       if (scamin && scaleDenom > scamin) continue;
       if (p.mz && z < p.mz) continue;
+      // Built-in seamarks can be dense (Baltic skerries): until zoom 14 skip buoys and beacons that would overlap.
+      const thin = p.mz && z < 14 && (p.c.startsWith('BOY') || p.c.startsWith('BCN') || (p.c === 'LIGHTS' && p.mz > 8));
       for (const pt of f.geometry) {
         const x = pt[0] * scale, y = pt[1] * scale;
         if (x - offX < -128 || y - offY < -128 || x - offX > 384 || y - offY > 384) continue;
+        if (thin && !fits(x - 6, y - 15, 13, 17)) continue;
         switch (p.c) {
           case 'SOUNDG':
             if (S.soundings && z >= 12 && fits(x - 7, y - 6, 14, 12)) drawSounding(ctx, p.d, x, y);

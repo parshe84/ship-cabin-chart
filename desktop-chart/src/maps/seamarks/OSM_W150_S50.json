@@ -1,1 +1,1 @@
-{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-142.720271,-43.580107]},"properties":{"c":"WRECKS","a":{"OBJNAM":"Spaceship cemetery"},"id":0}}]}
+{"k":["OBSTRN","WRECKS"],"f":[[1,-142.720271,-43.580107,{"OBJNAM":"Spaceship cemetery"}],[0,-148.437006,-41.4368,{"OBJNAM":"Sophie Christenson Shoal","WATLEV":"3"}]]}

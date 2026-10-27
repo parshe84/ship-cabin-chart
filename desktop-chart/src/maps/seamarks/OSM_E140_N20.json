@@ -1,1 +1,1 @@
-{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[142.158712,26.634878]},"properties":{"c":"LIGHTS","a":{},"id":0}}]}
+{"k":["LIGHTS","WRECKS"],"f":[[0,142.158712,26.634878],[1,142.206502,27.084223,{"OBJNAM":"濱江丸"}]]}

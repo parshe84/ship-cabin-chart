@@ -1,1 +1,1 @@
-{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-160.098352,22.019085]},"properties":{"c":"LIGHTS","a":{},"id":0}}]}
+{"k":["BOYSPP","LIGHTS"],"f":[[1,-160.098288,22.018995],[0,-162.075,24.361111,{"OBJNAM":"NOAA Data Lighted Buoy 51101","COLOUR":"6","BOYSHP":"2"}],[1,-162.075,24.361111,{"LITCHR":"2","SIGGRP":"(4)","SIGPER":"20","COLOUR":"6"}],[0,-162.0,24.452778,{"OBJNAM":"NOAA Data Lighted Buoy 51001","COLOUR":"6","BOYSHP":"2"}],[1,-162.0,24.452778,{"LITCHR":"2","SIGGRP":"(4)","SIGPER":"20","COLOUR":"6"}]]}

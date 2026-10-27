@@ -1,1 +1,1 @@
-{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-60.649077,-62.920395]},"properties":{"c":"HRBFAC","a":{},"id":0}},{"type":"Feature","geometry":{"type":"Point","coordinates":[-60.968287,-64.16555]},"properties":{"c":"HRBFAC","a":{"OBJNAM":"Primavera"},"id":1}}]}
+{"k":["ACHARE","HRBFAC"],"f":[[0,-62.533398,-64.617429,{"OBJNAM":"Orne Harbour"}],[1,-60.968287,-64.16555,{"OBJNAM":"Primavera"}],[1,-60.649077,-62.920395]]}

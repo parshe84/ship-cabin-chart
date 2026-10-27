@@ -1,7 +1,7 @@
 {
   "name": "ship-cabin-chart",
   "productName": "Ship Cabin Chart",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Ship position on a world nautical chart, received as NMEA from an Android phone over Wi-Fi",
   "main": "src/main.js",
   "author": "parshe84",

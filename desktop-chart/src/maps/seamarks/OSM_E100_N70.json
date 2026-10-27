@@ -1,1 +1,1 @@
-{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[104.306367,77.707709]},"properties":{"c":"LIGHTS","a":{},"id":0}},{"type":"Feature","geometry":{"type":"Point","coordinates":[104.697731,77.677301]},"properties":{"c":"LIGHTS","a":{},"id":1}}]}
+{"k":["ACHARE","LIGHTS"],"f":[[0,102.459444,71.988889,{"OBJNAM":"2"}],[0,102.494444,71.995278,{"OBJNAM":"1"}],[1,104.697731,77.677301],[1,104.306367,77.707709]]}

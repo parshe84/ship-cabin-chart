@@ -125,7 +125,7 @@ Rebuilt with `python3 scripts/build-osm-land.py` from the Daylight Map Distribut
 **Seamarks worldwide, offline.** Lights (flare, sectors and characteristic such as `Fl(2) W 15s 20m 15M`, major
 lights from zoom 6), buoys and beacons by shape and colour, wrecks, rocks, obstructions, harbours, marinas,
 anchorages, pilot boarding places, landmarks and more, from the OpenSeaMap tags in OpenStreetMap
-(`src/maps/seamarks`, loaded per 10° square). Click a symbol for its details. They are drawn with the same
+(about 485,000 objects incl. 100,000 lights and 150,000 buoys and beacons; `src/maps/seamarks`, ~28 MB, loaded per 10° square). Click a symbol for its details. They are drawn with the same
 S-52-style symbols as ENC charts and can be switched off in the layers menu. Rebuilt with
 `python3 scripts/build-osm-seamarks.py` (scans the planet file on AWS). The online OpenSeaMap overlay is
 still in the layers menu but off by default.

@@ -1,1 +1,1 @@
-{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[93.753472,78.162961]},"properties":{"c":"LIGHTS","a":{},"id":0}},{"type":"Feature","geometry":{"type":"Point","coordinates":[91.866836,77.646501]},"properties":{"c":"LIGHTS","a":{},"id":1}}]}
+{"k":["LIGHTS"],"f":[[0,93.753472,78.162961],[0,91.866836,77.646501]]}

@@ -1,1 +1,1 @@
-{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-157.368904,1.952359]},"properties":{"c":"SISTAW","a":{"OBJNAM":"Christmas Island"},"id":0}}]}
+{"k":["BCNSPP","LIGHTS","SISTAW"],"f":[[2,-157.368904,1.952359,{"OBJNAM":"Christmas Island"}],[1,-159.362959,3.854483,{"LITCHR":"1","VALNMR":"12","HEIGHT":"9","COLOUR":"1","OBJNAM":"Fanning Island"}],[0,-157.474522,1.984454,{"OBJNAM":"Christmas Island","BCNSHP":"3"}],[1,-157.474522,1.984454,{"LITCHR":"1","VALNMR":"17","HEIGHT":"39","COLOUR":"3"}]]}
