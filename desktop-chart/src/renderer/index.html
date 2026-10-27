@@ -12,6 +12,35 @@
   <div id="map"></div>
   <div class="vignette"></div>
 
+  <!-- Live voyage bar (route following) and planning hints, stacked at the top -->
+  <div id="top-bars">
+  <div id="voyage-bar" class="voyage-bar" hidden>
+    <div class="vb-cell vb-next"><label>Next <span id="vb-next-n"></span></label><b id="vb-next">—</b></div>
+    <div class="vb-cell"><label>XTE</label><b id="vb-xte">—</b></div>
+    <div class="vb-cell vb-dtg"><label>To go</label><b id="vb-dtg">—</b></div>
+    <div class="vb-cell vb-eta"><label>ETA</label><b id="vb-eta">—</b><small id="vb-ttg"></small></div>
+    <button id="vb-speed" class="vb-chip" title="Speed used for ETA">—</button>
+    <div class="vb-actions">
+      <button id="vb-edit" title="Edit route">Edit</button>
+      <button id="vb-gpx" title="Export route as GPX">GPX</button>
+      <button id="vb-end" title="Delete route">✕</button>
+    </div>
+  </div>
+  <div id="plan-bar" class="plan-bar" hidden>
+    <span class="pb-title">Route planning <small id="pb-start"></small></span>
+    <span class="pb-hint"><kbd>Click</kbd> waypoint · <kbd>Shift</kbd>+click sea lanes · drag to move · right-click delete · <kbd>Enter</kbd> done</span>
+    <label class="pb-arctic" title="Allow the Northwest Passage (ice!)"><input type="checkbox" id="pb-arctic"> Arctic</label>
+    <button id="pb-undo">Undo</button>
+    <button id="pb-clear">Clear</button>
+    <button id="pb-done" class="primary">Done</button>
+  </div>
+  <div id="measure-bar" class="plan-bar" hidden>
+    <span class="pb-title">Measure</span>
+    <span class="pb-hint"><kbd>Click</kbd> points · rhumb-line course and distance · <kbd>Esc</kbd> to finish</span>
+    <button id="mb-done" class="primary">Done</button>
+  </div>
+  </div>
+
   <aside id="hud">
     <header class="hud-head">
       <div class="brand">
@@ -76,6 +105,18 @@
     </section>
 
     <nav class="actions">
+      <button id="btn-route" class="act" title="Plan a route from the ship: click = waypoint, Shift+click = follow sea lanes">
+        <svg viewBox="0 0 24 24"><circle cx="5" cy="19" r="2"/><path d="M7 18c4-1 3-6 7-7s4-4 4-6"/><path d="M15 3h4v4"/></svg>
+        <span>Route</span>
+      </button>
+      <button id="btn-measure" class="act" title="Measure distance and bearing between points">
+        <svg viewBox="0 0 24 24"><path d="M3 17 17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg>
+        <span>Measure</span>
+      </button>
+      <button id="btn-ports" class="act" title="World sea distances between ports">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><path d="M12 7v14M5 12H3a9 9 0 0 0 18 0h-2M8 10h8"/></svg>
+        <span>Ports</span>
+      </button>
       <button id="btn-follow" class="act" title="Keep the ship centred">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/></svg>
         <span>Follow</span>
@@ -108,6 +149,51 @@
       <span id="status-tcp"></span>
     </footer>
   </aside>
+
+  <dialog id="speed-dialog" class="small">
+    <form method="dialog">
+      <h3>Speed for ETA</h3>
+      <label class="inline"><input type="radio" name="speed-mode" value="avg" checked> Average SOG over the last 10 minutes</label>
+      <label class="inline"><input type="radio" name="speed-mode" value="manual"> Planned speed
+        <input id="speed-manual" type="number" min="0.5" max="60" step="0.5" value="12"> kn</label>
+      <menu>
+        <button value="cancel">Cancel</button>
+        <button class="primary" value="save">Apply</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="ports-dialog" class="wide">
+    <form method="dialog">
+      <header class="dlg-head">
+        <h3>World sea distances</h3>
+        <nav class="tabs">
+          <button type="button" class="tab on" data-tab="p2p">Port to port</button>
+          <button type="button" class="tab" data-tab="table">Distance table</button>
+        </nav>
+        <button class="dlg-close" value="cancel" title="Close">✕</button>
+      </header>
+      <section id="tab-p2p" class="tab-page on">
+        <div class="p2p-grid">
+          <label>From <input id="p2p-from" type="text" list="ports-list" placeholder="Ship position or port…" value="Ship position"></label>
+          <label>To <input id="p2p-to" type="text" list="ports-list" placeholder="Type a port: Rotterdam, Singapore…"></label>
+        </div>
+        <datalist id="ports-list"></datalist>
+        <div class="avoid"><span class="muted">Avoid:</span><div id="avoid-list"></div></div>
+        <div id="p2p-result" class="p2p-result"></div>
+        <menu>
+          <button type="button" id="p2p-show">Show on chart</button>
+          <button type="button" id="p2p-use" class="primary">Use as my route</button>
+        </menu>
+      </section>
+      <section id="tab-table" class="tab-page">
+        <p class="muted">Shortest sea distances in nautical miles between major ports, along the shipping-lane network
+          (via Suez and Panama where shorter). Click a cell to see the route.</p>
+        <div class="table-wrap"><table id="dist-table"></table></div>
+      </section>
+      <p class="muted tiny">Network: Eurostat SeaRoute / MARNET via searoute-py (Apache-2.0). Planning aid only, not for navigation.</p>
+    </form>
+  </dialog>
 
   <dialog id="settings">
     <form method="dialog">
@@ -150,6 +236,8 @@
   <script src="../../node_modules/leaflet/dist/leaflet.js"></script>
   <script src="../../node_modules/geojson-vt/geojson-vt.js"></script>
   <script src="sun.js"></script>
+  <script src="nav-core.js"></script>
+  <script src="voyage.js"></script>
   <script src="world-chart.js"></script>
   <script src="app.js"></script>
 </body>

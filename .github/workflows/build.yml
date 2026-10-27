@@ -31,17 +31,7 @@ jobs:
           path: android-gps-sender/app/build/outputs/apk/release/*.apk
 
   desktop:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            target: dist:win
-            artifact: desktop-chart/dist/*.exe
-          - os: ubuntu-24.04
-            target: dist:linux
-            artifact: desktop-chart/dist/*.AppImage
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     defaults:
       run:
         working-directory: desktop-chart
@@ -54,11 +44,11 @@ jobs:
           cache-dependency-path: desktop-chart/package-lock.json
       - run: npm ci
       - run: npm test
-      - run: npm run ${{ matrix.target }}
+      - run: npm run dist:win
       - uses: actions/upload-artifact@v4
         with:
-          name: desktop-chart-${{ matrix.os }}
-          path: ${{ matrix.artifact }}
+          name: desktop-chart-windows
+          path: desktop-chart/dist/*.exe
 
   # Publishes a GitHub Release when the version in desktop-chart/package.json is new
   # (or when a v* tag is pushed). The release action creates the tag itself.
@@ -92,8 +82,7 @@ jobs:
         run: |
           mkdir release
           cp artifacts/android-gps-sender-apk/*.apk "release/CabinGPS-${{ steps.version.outputs.tag }}.apk"
-          cp artifacts/desktop-chart-windows-latest/*.exe release/
-          cp artifacts/desktop-chart-ubuntu-24.04/*.AppImage release/
+          cp artifacts/desktop-chart-windows/*.exe release/
           ls -la release
       - uses: softprops/action-gh-release@v2
         if: steps.version.outputs.publish == 'true'

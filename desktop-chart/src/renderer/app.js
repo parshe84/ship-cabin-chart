@@ -31,11 +31,20 @@ const seamarks = L.tileLayer('tilecache://seamark/{z}/{x}/{y}.png', {
   className: 'seamark-tiles',
   attribution: '© OpenSeaMap',
 }).addTo(map);
+// Latitude/longitude grid: lines are drawn in the chart tiles, labels along the edges.
+const gridLabels = new Voyage.GridLabels().addTo(map);
 L.control.layers(null, {
+  'Lat / lon grid': gridLabels,
   'Place names, ports': world.labels,
   'OpenStreetMap detail (zoom 9+)': osm,
   'Seamarks (zoom 9+)': seamarks,
 }, { position: 'topleft' }).addTo(map);
+map.on('overlayadd overlayremove', (e) => {
+  if (e.layer === gridLabels) {
+    world.setGraticule(e.type === 'overlayadd');
+    window.ship.saveSettings({ grid: e.type === 'overlayadd' });
+  }
+});
 L.control.scale({ metric: true, imperial: true, position: 'bottomleft' }).addTo(map);
 
 // --- Depth legend with a readout of the chart depth under the cursor ---
@@ -202,10 +211,174 @@ window.ship.onFix((fix) => {
   }
   state.lastFix = fix.receivedAt;
   state.source = fix.source;
+  if (fix.sog != null) speedAvg.add(fix.sog, fix.receivedAt);
   if (fix.lat != null && fix.lon != null) addTrackPoint(fix.lat, fix.lon, fix.time);
   render();
   applyTheme();
+  planner.update();
+  renderVoyage();
 });
+
+// --- Voyage: route planning from the GPS position, ETA, distance to go ---
+
+const speedAvg = new NavCore.SpeedAverage();
+let etaSpeed = null; // null = average SOG, otherwise planned knots
+let router = null;
+let distanceTable = null;
+
+function etaKnots() {
+  if (etaSpeed) return etaSpeed;
+  const v = speedAvg.value;
+  return v != null && v >= 0.5 ? v : null;
+}
+
+function shipPosition() {
+  if (state.lat != null) return { lat: state.lat, lon: state.lon };
+  const last = track[track.length - 1];
+  return last ? { lat: last[0], lon: last[1] } : null;
+}
+
+const planner = new Voyage.RoutePlanner({
+  map,
+  router: () => router,
+  getShip: shipPosition,
+  getSpeed: etaKnots,
+  save: (route) => window.ship.saveRoute(route),
+  onChange: () => renderVoyage(),
+});
+
+const measure = new Voyage.MeasureTool(map, () => {
+  $('measure-bar').hidden = true;
+  $('btn-measure').classList.remove('on');
+});
+
+function renderVoyage() {
+  const planning = planner.planning;
+  $('plan-bar').hidden = !planning;
+  document.body.classList.toggle('planning-mode', planning);
+  $('btn-route').classList.toggle('on', planning || !!planner.route);
+  if (planning) $('pb-start').textContent = planner.startNote ? `· ${planner.startNote}` : '';
+  $('pb-arctic').checked = !planner.avoid.includes('northwest');
+
+  const s = planner.summary();
+  $('voyage-bar').hidden = !s;
+  if (!s) return;
+  const bar = $('voyage-bar');
+  bar.classList.toggle('arrived', !!s.arrived);
+  $('vb-next-n').textContent = s.next ? `WP ${s.next}` : '';
+  $('vb-next').textContent = s.toNext != null ? `${Voyage.fmtBrg(s.brgNext)} ${Voyage.fmtNm(s.toNext)}nm` : '—';
+  $('vb-xte').textContent = s.xte != null
+    ? `${Math.abs(s.xte) < 0.05 ? '0.0' : Math.abs(s.xte).toFixed(Math.abs(s.xte) < 10 ? 2 : 1)}${Math.abs(s.xte) < 0.05 ? '' : s.xte > 0 ? ' S' : ' P'}`
+    : '—';
+  $('vb-dtg').textContent = s.arrived ? 'Arrived' : `${Voyage.fmtNm(s.dtg)} nm`;
+  $('vb-eta').textContent = s.eta ? s.eta.at : '—';
+  $('vb-ttg').textContent = s.eta ? `in ${s.eta.in}` : 'set a speed';
+  $('vb-speed').textContent = s.speed ? `@ ${s.speed.toFixed(1)} kn ${etaSpeed ? 'plan' : 'avg'}` : '@ — kn';
+}
+setInterval(renderVoyage, 15000); // ETA clock keeps moving even without new fixes
+
+$('btn-route').onclick = () => {
+  if (planner.planning) {
+    planner.finishPlanning();
+    return;
+  }
+  measure.stop();
+  setFollow(false);
+  planner.startPlanning();
+};
+$('pb-done').onclick = () => planner.finishPlanning();
+$('pb-undo').onclick = () => planner.undo();
+$('pb-clear').onclick = () => planner.clear();
+$('pb-arctic').onchange = (e) => {
+  planner.avoid = e.target.checked ? planner.avoid.filter((x) => x !== 'northwest') : [...new Set([...planner.avoid, 'northwest'])];
+  planner.persist();
+};
+$('vb-edit').onclick = () => { measure.stop(); planner.startPlanning(); };
+$('vb-end').onclick = () => {
+  if (!confirm('Delete the planned route?')) return;
+  planner.clear();
+};
+$('vb-gpx').onclick = async () => {
+  if (!planner.route) return;
+  const res = await window.ship.exportRouteGpx(planner.route.waypoints);
+  if (res.ok) $('status-map').textContent = `Route saved: ${res.path}`;
+};
+$('vb-speed').onclick = () => {
+  document.querySelector(`input[name="speed-mode"][value="${etaSpeed ? 'manual' : 'avg'}"]`).checked = true;
+  if (etaSpeed) $('speed-manual').value = etaSpeed;
+  $('speed-dialog').showModal();
+};
+$('speed-dialog').addEventListener('close', () => {
+  if ($('speed-dialog').returnValue !== 'save') return;
+  const manual = document.querySelector('input[name="speed-mode"]:checked').value === 'manual';
+  etaSpeed = manual ? Math.max(0.5, parseFloat($('speed-manual').value) || 12) : null;
+  window.ship.saveSettings({ etaSpeed });
+  renderVoyage();
+});
+
+$('btn-measure').onclick = () => {
+  if (measure.active) {
+    measure.stop();
+    return;
+  }
+  if (planner.planning) planner.finishPlanning();
+  setFollow(false);
+  measure.start();
+  $('measure-bar').hidden = false;
+  $('btn-measure').classList.add('on');
+};
+$('mb-done').onclick = () => measure.stop();
+
+// Sea distances between ports; the network loads lazily the first time it's needed.
+const routerReady = (async () => {
+  router = new NavCore.SeaRouter(JSON.parse(await window.ship.loadWorldLayer('sea-routes')));
+  distanceTable = JSON.parse(await window.ship.loadWorldLayer('distance-table'));
+})();
+
+const previewLayer = L.layerGroup().addTo(map);
+let distancesReady = false;
+$('btn-ports').onclick = async () => {
+  await routerReady;
+  if (!distancesReady) {
+    distancesReady = true;
+    Voyage.setupDistances({
+      dialog: $('ports-dialog'),
+      router: () => router,
+      table: distanceTable,
+      getShip: shipPosition,
+      getSpeed: etaKnots,
+      avoidRef: (next) => (next ? (planner.avoid = next) : planner.avoid),
+      showRoute: (r) => {
+        previewLayer.clearLayers();
+        const line = L.polyline(r.points, { className: 'route-line preview', weight: 3, interactive: false }).addTo(previewLayer);
+        L.marker(r.points[r.points.length - 1], {
+          icon: L.divIcon({ className: 'leg-label route', html: `<span>${r.from.name} → ${r.to.name} · ${Voyage.fmtNm(r.distanceNm)} nm</span>`, iconSize: [0, 0] }),
+          interactive: false,
+        }).addTo(previewLayer);
+        setFollow(false);
+        map.fitBounds(line.getBounds(), { paddingTopLeft: [60, 60], paddingBottomRight: [380, 60] });
+        setTimeout(() => previewLayer.clearLayers(), 60000);
+      },
+      useRoute: (r) => {
+        previewLayer.clearLayers();
+        planner.route = {
+          waypoints: r.points.map(([lat, lon], i) => ({ lat, lon, auto: i > 0 && i < r.points.length - 1, start: i === 0 })),
+          active: 1,
+        };
+        planner.startNote = r.from.name === 'Ship' ? 'from ship' : `from ${r.from.name}`;
+        planner.progress = null;
+        planner.redraw();
+        planner.update();
+        planner.persist();
+        renderVoyage();
+        setFollow(false);
+        map.fitBounds(L.polyline(r.points).getBounds(), { paddingTopLeft: [60, 100], paddingBottomRight: [380, 60] });
+      },
+    });
+  }
+  $('ports-dialog').showModal();
+};
+map.on('zoomend', () => planner.route && !planner.planning && planner.redraw());
 
 window.ship.onStatus((s) => {
   if (s.udp) $('status-udp').textContent = `UDP · ${s.udp}`;
@@ -361,6 +534,13 @@ window.ship.onDownloadProgress((p) => {
   setFollow(s.follow);
   themeMode = THEME_MODES.includes(s.themeMode) ? s.themeMode : 'auto';
   applyTheme();
+  etaSpeed = s.etaSpeed || null;
+  if (s.grid === false) {
+    map.removeLayer(gridLabels);
+    world.setGraticule(false);
+  }
+  planner.load(await window.ship.loadRoute());
+  renderVoyage();
   track = await window.ship.loadTrack();
   trackLine.setLatLngs(track.map((p) => [p[0], p[1]]));
   recomputeLogged();

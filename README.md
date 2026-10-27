@@ -28,6 +28,26 @@ Two looks, switched with the **Day / Night / Auto** button:
 The HUD shows a compass dial with the course needle, speed over ground, distance logged, satellites and
 position. **GPX** exports the track for OpenCPN, Navionics, Google Earth and similar apps.
 
+## Voyage tools
+
+- **Route from the ship (Route).** The route starts at the current GPS position. **Click** adds a waypoint;
+  **Shift+click** routes along the shipping lanes around land (through Suez, Panama, Gibraltar and other
+  straits), with a live preview while Shift is held. A tooltip at the cursor shows the leg course and distance,
+  the total and the **ETA**. Drag waypoints to move them, click the line to insert one, right-click to delete,
+  **Enter**/double-click to finish. The route is saved and can be exported as GPX.
+- **Voyage bar.** While following the route: next waypoint (bearing and distance), **XTE** (cross-track error,
+  S = starboard, P = port), **distance to go** and **ETA** (UTC) with time to go. Waypoints switch automatically
+  when reached or passed. ETA uses the **average SOG over the last 10 minutes** or a planned speed you set.
+- **Measure.** A quick ruler between any points: rhumb-line course and distance per leg, total in nm and km.
+- **Lat/lon grid.** Grid lines with degree and minute labels along the chart edges, finer as you zoom in
+  (toggle in the layers menu).
+- **World sea distances (Ports).** The shortest sea distance between any two of ~4,000 ports, or from the ship
+  to a port, with passages to avoid (Suez, Panama, Malacca…). Includes a distance table for 47 major world ports.
+  Use any result as your route. The network is Eurostat SeaRoute / MARNET (via searoute-py, Apache-2.0). Its
+  distances agree with published port-distance tables within a few percent (Rotterdam–Singapore 8,386 nm,
+  Shanghai–Los Angeles 5,776 nm, Singapore–Hong Kong 1,457 nm). Rebuild it with
+  `python3 scripts/build-sea-routes.py`.
+
 ## Maps
 
 **Built-in world chart, works fully offline.**
@@ -72,7 +92,7 @@ Any app that outputs NMEA works too:
 
 ## Building
 
-GitHub Actions builds the APK, a Windows portable `.exe` and a Linux AppImage on every push.
+GitHub Actions builds the APK and the Windows portable `.exe` on every push.
 When the version in `desktop-chart/package.json` changes, CI also publishes them as a **GitHub Release**. Download them from the
 repository's **Releases** page.
 

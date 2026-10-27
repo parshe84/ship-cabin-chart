@@ -164,9 +164,9 @@ ipcMain.handle('download-area', async (_e, { north, south, east, west, minZoom, 
   return { ok: true, done, failed };
 });
 
-// Bundled offline world chart (Natural Earth), see scripts/build-world-map.js.
+// Bundled offline world chart and sea-route network, see scripts/build-*.
 const WORLD_LAYERS = new Set(['bathymetry', 'land', 'coastline', 'ice', 'lakes', 'rivers', 'borders', 'reefs',
-  'marine-labels', 'ports', 'places']);
+  'marine-labels', 'ports', 'places', 'sea-routes', 'distance-table']);
 ipcMain.handle('load-world-layer', (_e, name) => {
   if (!WORLD_LAYERS.has(name)) throw new Error(`unknown layer ${name}`);
   return fs.promises.readFile(path.join(__dirname, 'maps', 'world', `${name}.json`), 'utf8');
@@ -190,6 +190,16 @@ ipcMain.handle('save-track', (_e, track) => {
   fs.writeFileSync(path.join(dataDir, 'track.json'), JSON.stringify(track));
 });
 
+ipcMain.handle('load-route', () => {
+  try { return JSON.parse(fs.readFileSync(path.join(dataDir, 'route.json'), 'utf8')); } catch { return null; }
+});
+
+ipcMain.handle('save-route', (_e, route) => {
+  const file = path.join(dataDir, 'route.json');
+  if (route) fs.writeFileSync(file, JSON.stringify(route));
+  else fs.rmSync(file, { force: true });
+});
+
 function toGpx(track) {
   const pts = track
     .map(([lat, lon, t]) => `      <trkpt lat="${lat.toFixed(6)}" lon="${lon.toFixed(6)}">` +
@@ -207,17 +217,38 @@ ${pts}
 `;
 }
 
-ipcMain.handle('export-gpx', async (_e, track) => {
+// Waypoints of a planned route as a GPX <rte>; sea-lane points are named but marked as such.
+function routeToGpx(waypoints) {
+  let n = 0;
+  const pts = waypoints.map((w, i) => {
+    const lon = ((((w.lon + 180) % 360) + 360) % 360) - 180;
+    const name = i === 0 ? 'Start' : w.auto ? `Lane ${i}` : i === waypoints.length - 1 ? 'Destination' : `WP${++n}`;
+    return `    <rtept lat="${w.lat.toFixed(6)}" lon="${lon.toFixed(6)}"><name>${name}</name></rtept>`;
+  }).join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Ship Cabin Chart" xmlns="http://www.topografix.com/GPX/1/1">
+  <rte>
+    <name>Planned route</name>
+${pts}
+  </rte>
+</gpx>
+`;
+}
+
+async function saveGpx(title, name, content) {
   const stamp = new Date().toISOString().slice(0, 10);
   const { canceled, filePath } = await dialog.showSaveDialog(win, {
-    title: 'Export track',
-    defaultPath: path.join(app.getPath('documents'), `ship-track-${stamp}.gpx`),
-    filters: [{ name: 'GPX track', extensions: ['gpx'] }],
+    title,
+    defaultPath: path.join(app.getPath('documents'), `${name}-${stamp}.gpx`),
+    filters: [{ name: 'GPX', extensions: ['gpx'] }],
   });
   if (canceled || !filePath) return { ok: false };
-  await fs.promises.writeFile(filePath, toGpx(track));
+  await fs.promises.writeFile(filePath, content);
   return { ok: true, path: filePath };
-});
+}
+
+ipcMain.handle('export-gpx', (_e, track) => saveGpx('Export track', 'ship-track', toGpx(track)));
+ipcMain.handle('export-route-gpx', (_e, waypoints) => saveGpx('Export route', 'ship-route', routeToGpx(waypoints)));
 
 function createWindow() {
   win = new BrowserWindow({

@@ -42,7 +42,7 @@
       coastGlow: 'rgba(0, 229, 255, 0.9)',
       border: 'rgba(255, 43, 214, 0.5)',
       reef: '#ff2bd6',
-      graticule: 'rgba(0, 229, 255, 0.07)',
+      graticule: 'rgba(0, 229, 255, 0.16)',
     },
     day: {
       depth: depthPalette([[0, '#e2fafa'], [0.18, '#a9e6ef'], [0.35, '#6cc7e2'], [0.6, '#3487c4'], [1, '#0b2560']]),
@@ -58,10 +58,11 @@
       coastGlow: null,
       border: '#c084fc',
       reef: '#f43f5e',
-      graticule: 'rgba(15, 45, 104, 0.12)',
+      graticule: 'rgba(15, 45, 104, 0.22)',
     },
   };
   let P = THEMES.night;
+  let showGraticule = true;
 
   // Draw order; each entry is filled/stroked with the current palette.
   const LAYERS = [
@@ -162,7 +163,7 @@
       }
       ctx.shadowBlur = 0;
       ctx.setLineDash([]);
-      this._drawGraticule(ctx, coords, size);
+      if (showGraticule) this._drawGraticule(ctx, coords, size);
       return tile;
     },
 
@@ -334,12 +335,17 @@
       labels.refresh();
     })();
 
+    function setGraticule(on) {
+      showGraticule = on;
+      chart.redraw();
+    }
+
     function setTheme(name) {
       P = THEMES[name] || THEMES.night;
       chart.redraw();
     }
 
-    return { chart, labels, ready, setTheme, depthAt, legend };
+    return { chart, labels, ready, setTheme, setGraticule, depthAt, legend };
   }
 
   window.WorldChart = { createWorldChart, DEPTH_LEVELS };
