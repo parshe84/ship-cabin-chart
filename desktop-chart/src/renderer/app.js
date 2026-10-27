@@ -40,14 +40,28 @@ const aisLayer = new AisLayer(map, () => ownForCpa(), (t, d) => {
   showAlert(`AIS: ${t.name || `MMSI ${t.mmsi}`} will pass ${d.cpaNm.toFixed(2)} nm in ${Math.round(d.tcpaMin)} min`);
 });
 aisLayer.group.addTo(map);
+// Toggles for the OSM maritime layer drawn inside the chart tiles.
+const tssToggle = L.layerGroup().addTo(map);
+const limitsToggle = L.layerGroup().addTo(map);
 L.control.layers(null, {
   'Lat / lon grid': gridLabels,
   'AIS targets': aisLayer.group,
+  '<span class="lc-tss">▰</span> Traffic separation schemes': tssToggle,
+  '<span class="lc-lim">┅</span> Maritime limits: 12 nm · 24 nm · EEZ': limitsToggle,
   'Place names, ports': world.labels,
   'OpenStreetMap detail (zoom 9+)': osm,
   'Seamarks (zoom 9+)': seamarks,
 }, { position: 'topleft' }).addTo(map);
 map.on('overlayadd overlayremove', (e) => {
+  const on = e.type === 'overlayadd';
+  if (e.layer === tssToggle) {
+    world.setVisible('tss', on);
+    window.ship.saveSettings({ tss: on });
+  }
+  if (e.layer === limitsToggle) {
+    world.setVisible('limits', on);
+    window.ship.saveSettings({ limits: on });
+  }
   if (e.layer === gridLabels) {
     world.setGraticule(e.type === 'overlayadd');
     window.ship.saveSettings({ grid: e.type === 'overlayadd' });
@@ -791,6 +805,14 @@ window.ship.onDownloadProgress((p) => {
   }
   $('status-version').textContent = `v${s.version}`;
   setTimeout(() => checkUpdates(false), 15e3);
+  if (s.tss === false) {
+    map.removeLayer(tssToggle);
+    world.setVisible('tss', false);
+  }
+  if (s.limits === false) {
+    map.removeLayer(limitsToggle);
+    world.setVisible('limits', false);
+  }
   if (s.grid === false) {
     map.removeLayer(gridLabels);
     world.setGraticule(false);

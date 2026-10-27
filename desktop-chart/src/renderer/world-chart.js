@@ -43,6 +43,8 @@
       border: 'rgba(255, 43, 214, 0.5)',
       reef: '#ff2bd6',
       graticule: 'rgba(0, 229, 255, 0.16)',
+      tss: '#ff3df2',
+      limits: '#ffd23f',
     },
     day: {
       depth: depthPalette([[0, '#e2fafa'], [0.18, '#a9e6ef'], [0.35, '#6cc7e2'], [0.6, '#3487c4'], [1, '#0b2560']]),
@@ -59,6 +61,8 @@
       border: '#c084fc',
       reef: '#f43f5e',
       graticule: 'rgba(15, 45, 104, 0.22)',
+      tss: '#c026d3',
+      limits: '#b45309',
     },
   };
   // Red night vision: everything in dim reds on black, nothing blue or white.
@@ -77,9 +81,83 @@
     border: 'rgba(200, 30, 20, 0.45)',
     reef: '#ff3020',
     graticule: 'rgba(255, 40, 30, 0.14)',
+    tss: '#ff3020',
+    limits: '#a8120a',
   };
   let P = THEMES.night;
   let showGraticule = true;
+  const visible = { tss: true, limits: true };
+
+  // OpenStreetMap maritime layer (scripts/build-osm-maritime.py): IMO traffic separation schemes
+  // drawn in chart magenta, and maritime limits in dashes like on a paper chart.
+  const LIMIT_STYLE = {
+    territorial: { dash: [8, 4], width: 1.4, minZoom: 4, alpha: 0.85 },
+    contiguous: { dash: [2, 4], width: 1, minZoom: 6, alpha: 0.6 },
+    eez: { dash: [14, 6, 2, 6], width: 1.1, minZoom: 2, alpha: 0.55 },
+    baseline: { dash: [], width: 0.8, minZoom: 7, alpha: 0.45 },
+  };
+
+  function drawArrow(ctx, f, scale, dx, dy) {
+    // Direction of a traffic lane: arrowhead at the middle of the (tile-clipped) way.
+    for (const ring of f.geometry) {
+      if (ring.length < 2) continue;
+      const m = Math.floor((ring.length - 1) / 2);
+      const [x1, y1] = [ring[m][0] * scale - dx, ring[m][1] * scale - dy];
+      const [x2, y2] = [ring[m + 1][0] * scale - dx, ring[m + 1][1] * scale - dy];
+      const a = Math.atan2(y2 - y1, x2 - x1);
+      const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * 7, cy + Math.sin(a) * 7);
+      ctx.lineTo(cx + Math.cos(a + 2.5) * 7, cy + Math.sin(a + 2.5) * 7);
+      ctx.lineTo(cx + Math.cos(a - 2.5) * 7, cy + Math.sin(a - 2.5) * 7);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  function drawMaritime(ctx, f, z, scale, dx, dy) {
+    const kind = f.tags.kind;
+    const lim = LIMIT_STYLE[kind];
+    if (lim) {
+      if (!visible.limits || z < lim.minZoom) return;
+      ctx.globalAlpha = lim.alpha;
+      ctx.strokeStyle = P.limits;
+      ctx.lineWidth = lim.width;
+      ctx.setLineDash(lim.dash);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      return;
+    }
+    if (!visible.tss || z < 7) return;
+    ctx.strokeStyle = P.tss;
+    ctx.fillStyle = P.tss;
+    if (kind === 'separation_zone' || kind === 'separation_roundabout') {
+      ctx.globalAlpha = 0.28;
+      ctx.fill('evenodd');
+      ctx.globalAlpha = 0.9;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+      ctx.stroke();
+    } else if (kind === 'separation_lane') {
+      ctx.globalAlpha = 0.85;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 5]);
+      ctx.stroke();
+      if (z >= 9) drawArrow(ctx, f, scale, dx, dy);
+    } else if (kind === 'inshore_traffic_zone' || kind === 'precautionary_area') {
+      ctx.globalAlpha = 0.8;
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([6, 4]);
+      ctx.stroke();
+    } else {
+      // separation_line / separation_boundary / separation_crossing
+      ctx.globalAlpha = 0.9;
+      ctx.lineWidth = kind === 'separation_line' ? 2.2 : 1.2;
+      ctx.setLineDash(kind === 'separation_boundary' ? [10, 4] : []);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
 
   // Draw order; each entry is filled/stroked with the current palette.
   const LAYERS = [
@@ -99,6 +177,7 @@
     { name: 'reefs', stroke: () => P.reef, width: 1.2, dash: [2, 3], minZoom: () => 6 },
     { name: 'borders', stroke: () => P.border, width: 1, dash: [6, 3] },
     { name: 'coastline', stroke: () => P.coast, width: () => P.coastWidth, glow: () => P.coastGlow },
+    { name: 'maritime', draw: drawMaritime },
   ];
 
   const indexes = {};
@@ -126,7 +205,7 @@
   }
 
   const WorldChartLayer = L.GridLayer.extend({
-    options: { tileSize: 256, maxZoom: 18, attribution: 'Natural Earth · ETOPO1 depths (NOAA) via Mapzen Terrarium' },
+    options: { tileSize: 256, maxZoom: 18, attribution: 'Natural Earth · ETOPO1 depths (NOAA) via Mapzen Terrarium · TSS &amp; maritime limits © OpenStreetMap contributors (ODbL)' },
 
     createTile(coords) {
       const size = this.getTileSize();
@@ -160,6 +239,10 @@
         for (const f of t.features) {
           if (layer.minZoom && coords.z < layer.minZoom(f.tags)) continue;
           drawGeometry(ctx, f, scale, dx, dy);
+          if (layer.draw) {
+            layer.draw(ctx, f, coords.z, scale, dx, dy);
+            continue;
+          }
           if (layer.fill) {
             ctx.fillStyle = layer.fill(f.tags);
             ctx.fill('evenodd');
@@ -340,7 +423,13 @@
 
     const ready = (async () => {
       for (const layer of LAYERS) {
-        const data = JSON.parse(await loadLayer(layer.name));
+        let data;
+        try {
+          data = JSON.parse(await loadLayer(layer.name));
+        } catch (err) {
+          if (layer.name === 'maritime') continue; // optional OSM layer
+          throw err;
+        }
         if (layer.name === 'bathymetry') {
           depthPolys = indexPolygons(data.features).sort((a, b) => b.depth - a.depth);
         }
@@ -356,6 +445,11 @@
       labels.refresh();
     })();
 
+    function setVisible(name, on) {
+      visible[name] = on;
+      chart.redraw();
+    }
+
     function setGraticule(on) {
       showGraticule = on;
       chart.redraw();
@@ -366,7 +460,7 @@
       chart.redraw();
     }
 
-    return { chart, labels, ready, setTheme, setGraticule, depthAt, legend };
+    return { chart, labels, ready, setTheme, setGraticule, setVisible, depthAt, legend };
   }
 
   window.WorldChart = { createWorldChart, DEPTH_LEVELS };

@@ -232,7 +232,7 @@ ipcMain.handle('download-corridor', (_e, { points, radiusNm, minZoom, maxZoom, l
 
 // Bundled offline world chart and sea-route network, see scripts/build-*.
 const WORLD_LAYERS = new Set(['bathymetry', 'land', 'coastline', 'ice', 'lakes', 'rivers', 'borders', 'reefs',
-  'marine-labels', 'ports', 'places', 'sea-routes', 'distance-table']);
+  'marine-labels', 'ports', 'places', 'sea-routes', 'distance-table', 'maritime']);
 ipcMain.handle('load-world-layer', (_e, name) => {
   if (!WORLD_LAYERS.has(name)) throw new Error(`unknown layer ${name}`);
   return fs.promises.readFile(path.join(__dirname, 'maps', 'world', `${name}.json`), 'utf8');

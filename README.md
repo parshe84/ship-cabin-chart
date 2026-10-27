@@ -86,6 +86,18 @@ tiles on AWS Open Data. The HUD shows the **chart depth under the ship**, and th
 **under the cursor**. Resolution is about 2 km: this is a general chart for overview, not for navigation in
 shallow water.
 
+**Traffic separation schemes and maritime limits** (layers menu), from [OpenStreetMap](https://www.openstreetmap.org/copyright)
+(© OpenStreetMap contributors, data under the [ODbL 1.0](https://opendatacommons.org/licenses/odbl/)):
+
+- IMO traffic separation schemes worldwide in chart magenta: separation zones, lines and boundaries,
+  traffic lanes with direction arrows, roundabouts, inshore traffic zones and precautionary areas (zoom 7+);
+- maritime limits: territorial sea (12 nm), contiguous zone (24 nm), EEZ and baselines, as mapped in OSM.
+
+The file `src/maps/world/maritime.json` is a derived database of OpenStreetMap and is available under the ODbL.
+It is rebuilt with `python3 scripts/build-osm-maritime.py`, which reads the planet straight from AWS Open Data
+(`s3://osm-pds`). Coverage depends on OSM mapping, so these layers are for orientation and do not replace
+official charts and Notices to Mariners.
+
 Everything else comes from [Natural Earth](https://www.naturalearthdata.com/) 1:10m data (public domain):
 
 - land, coastlines, islands, glaciers and ice shelves

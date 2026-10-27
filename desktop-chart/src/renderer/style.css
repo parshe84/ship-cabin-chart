@@ -909,3 +909,7 @@ body[data-theme="red"] .ais-target path, body[data-theme="red"] .ais-target circ
   font: 600 12px "Space Grotesk", sans-serif;
   cursor: pointer;
 }
+
+/* Layers menu swatches for the OSM maritime layer */
+.lc-tss { color: #d946ef; }
+.lc-lim { color: #f59e0b; }
