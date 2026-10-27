@@ -11,5 +11,6 @@ contextBridge.exposeInMainWorld('ship', {
   loadTrack: () => ipcRenderer.invoke('load-track'),
   saveTrack: (t) => ipcRenderer.invoke('save-track', t),
   loadWorldLayer: (name) => ipcRenderer.invoke('load-world-layer', name),
+  exportGpx: (track) => ipcRenderer.invoke('export-gpx', track),
   downloadArea: (opts) => ipcRenderer.invoke('download-area', opts),
 });

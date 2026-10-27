@@ -15,6 +15,19 @@ porthole picks up GPS, and a laptop in the cabin shows the ship on the chart.
 | `android-gps-sender/` | **Cabin GPS** Android app. Reads the phone's GPS and broadcasts NMEA sentences (`RMC`, `GGA`, `VTG`) over UDP. Keeps running in the background with the screen off. |
 | `desktop-chart/` | Portable Electron app. Shows a built-in offline world chart, the ship with its heading, the track, speed in knots and coordinates in degrees/minutes. |
 
+## Design
+
+Two looks, switched with the **Day / Night / Auto** button:
+
+- **Night: "Neon Abyss".** A near-black ocean with glowing cyan coastlines and isobaths, a hot-pink ship
+  with a sonar pulse and a glowing track. Easy on the eyes in a dark cabin.
+- **Day: "Coastal Glass".** A turquoise-to-cobalt depth gradient, light land and frosted-glass panels.
+- **Auto** switches by the **sun's elevation at the ship's position** (night below −6°, civil twilight),
+  not by the laptop clock, so it stays right across time zones.
+
+The HUD shows a compass dial with the course needle, speed over ground, distance logged, satellites and
+position. **GPX** exports the track for OpenCPN, Navionics, Google Earth and similar apps.
+
 ## Maps
 
 **Built-in world chart, works fully offline.** Made from [Natural Earth](https://www.naturalearthdata.com/)
@@ -52,7 +65,8 @@ Any app that outputs NMEA works too:
 ## Building
 
 GitHub Actions builds the APK, a Windows portable `.exe` and a Linux AppImage on every push.
-Download them from the **Actions** tab, under *Artifacts* of the run.
+Pushing a tag such as `v1.0.0` also publishes them as a **GitHub Release**. Download them from the
+repository's **Releases** page.
 
 Locally:
 

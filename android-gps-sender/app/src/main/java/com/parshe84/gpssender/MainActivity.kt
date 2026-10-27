@@ -8,7 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import android.widget.Button
-import android.widget.CheckBox
+import android.widget.CompoundButton
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
@@ -28,7 +28,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var hostInput: EditText
     private lateinit var portInput: EditText
-    private lateinit var keepScreenOn: CheckBox
+    private lateinit var keepScreenOn: CompoundButton
     private lateinit var toggleButton: Button
     private lateinit var statusText: TextView
     private lateinit var positionText: TextView

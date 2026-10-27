@@ -8,80 +8,143 @@
   <link rel="stylesheet" href="../../node_modules/leaflet/dist/leaflet.css">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-theme="night">
   <div id="map"></div>
+  <div class="vignette"></div>
 
-  <aside id="panel">
-    <div class="row title">
-      <span id="link-dot" class="dot"></span>
-      <span>Ship position</span>
-    </div>
+  <aside id="hud">
+    <header class="hud-head">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 2 L19 20 L12 15.5 L5 20 Z"/>
+        </svg>
+        <span>Cabin<b>Chart</b></span>
+      </div>
+      <div id="link" class="link-pill" data-state="none">
+        <i></i><span id="link-text">No signal</span>
+      </div>
+    </header>
 
-    <div class="big" id="lat">—</div>
-    <div class="big" id="lon">—</div>
+    <section class="compass-card">
+      <svg id="compass" viewBox="-100 -100 200 200" aria-label="Course over ground">
+        <defs>
+          <linearGradient id="needle-grad" x1="0" y1="-1" x2="0" y2="1">
+            <stop offset="0" stop-color="var(--ship)"/>
+            <stop offset="1" stop-color="var(--ship-2)"/>
+          </linearGradient>
+        </defs>
+        <circle class="dial-ring" r="92"/>
+        <circle class="dial-inner" r="70"/>
+        <g id="dial-ticks"></g>
+        <g class="dial-cardinals">
+          <text y="-74">N</text><text x="78" y="5">E</text><text y="84">S</text><text x="-78" y="5">W</text>
+        </g>
+        <g id="needle" style="transform: rotate(0deg)">
+          <path d="M0,-66 L9,-40 L0,-46 L-9,-40 Z" fill="url(#needle-grad)"/>
+        </g>
+      </svg>
+      <div class="compass-readout">
+        <div class="cog"><span id="cog">---</span><small>°</small></div>
+        <label>COG · TRUE</label>
+      </div>
+    </section>
 
-    <div class="grid">
-      <div><label>Speed (SOG)</label><b id="sog">—</b><small>kn</small></div>
-      <div><label>Course (COG)</label><b id="cog">—</b><small>°</small></div>
-      <div><label>Satellites</label><b id="sats">—</b></div>
-      <div><label>Time (UTC)</label><b id="time">—</b></div>
-    </div>
+    <section class="stats">
+      <div class="stat stat-wide">
+        <label>Speed over ground</label>
+        <div class="big"><span id="sog">—</span><small>kn</small></div>
+      </div>
+      <div class="stat">
+        <label>Logged</label>
+        <div class="mid"><span id="logged">0.0</span><small>nm</small></div>
+      </div>
+      <div class="stat">
+        <label>Satellites</label>
+        <div class="mid"><span id="sats">—</span></div>
+      </div>
+    </section>
 
-    <div class="muted" id="age">No data from phone</div>
-    <div class="muted" id="source"></div>
+    <section class="position">
+      <div class="pos-row"><label>LAT</label><span id="lat">—</span></div>
+      <div class="pos-row"><label>LON</label><span id="lon">—</span></div>
+      <div class="pos-meta"><span id="time">--:--:-- UTC</span><span id="age"></span></div>
+    </section>
 
-    <div class="buttons">
-      <button id="btn-follow" class="toggle">Follow ship</button>
-      <button id="btn-clear">Clear track</button>
-      <button id="btn-download">Download detailed area</button>
-      <button id="btn-settings">Settings</button>
-    </div>
+    <nav class="actions">
+      <button id="btn-follow" class="act" title="Keep the ship centred">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/></svg>
+        <span>Follow</span>
+      </button>
+      <button id="btn-theme" class="act" title="Day / Night / Auto (by the sun at the ship's position)">
+        <svg id="theme-icon" viewBox="0 0 24 24"></svg>
+        <span id="theme-label">Auto</span>
+      </button>
+      <button id="btn-download" class="act" title="Download detailed maps for offline use">
+        <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>
+        <span>Maps</span>
+      </button>
+      <button id="btn-gpx" class="act" title="Export the track as GPX">
+        <svg viewBox="0 0 24 24"><path d="M4 18c3-6 5 2 8-4s5-8 8-6"/><circle cx="4" cy="18" r="1.6"/><circle cx="20" cy="8" r="1.6"/></svg>
+        <span>GPX</span>
+      </button>
+      <button id="btn-clear" class="act" title="Clear the recorded track">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
+        <span>Clear</span>
+      </button>
+      <button id="btn-settings" class="act" title="Connection settings">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>
+        <span>Setup</span>
+      </button>
+    </nav>
 
-    <div class="muted small" id="status-map">Loading world chart…</div>
-    <div class="muted small" id="status-udp"></div>
-    <div class="muted small" id="status-tcp"></div>
+    <footer class="hud-foot">
+      <span id="status-map">Loading world chart…</span>
+      <span id="status-udp"></span>
+      <span id="status-tcp"></span>
+    </footer>
   </aside>
 
   <dialog id="settings">
     <form method="dialog">
       <h3>Phone connection</h3>
-      <p class="muted small">This computer's IP: <b id="my-ip"></b><br>
-        Enter it in the Android app (or keep the broadcast address 255.255.255.255).</p>
+      <p class="muted">This computer's IP: <b id="my-ip"></b><br>
+        Enter it in the Android app, or keep the broadcast address 255.255.255.255.</p>
       <label>UDP port (NMEA input)
         <input id="udp-port" type="number" min="1" max="65535">
       </label>
-      <label>TCP: phone IP (for third-party apps like "Share GPS"; empty = off)
+      <label>TCP: phone IP, for third-party apps like "Share GPS" (empty = off)
         <input id="tcp-host" type="text" placeholder="192.168.43.1">
       </label>
       <label>TCP port
         <input id="tcp-port" type="number" min="1" max="65535">
       </label>
-      <p class="muted small">Data folder: <span id="data-dir"></span></p>
+      <p class="muted">Data folder: <span id="data-dir"></span></p>
       <menu>
         <button value="cancel">Cancel</button>
-        <button id="settings-save" value="save">Save</button>
+        <button id="settings-save" class="primary" value="save">Save</button>
       </menu>
     </form>
   </dialog>
 
   <dialog id="download">
     <form method="dialog">
-      <h3>Download detailed map for offline use</h3>
-      <p class="muted small">The world chart is built in and always works offline.
+      <h3>Detailed maps for offline use</h3>
+      <p class="muted">The world chart is built in and always works offline.
         This downloads detailed OpenStreetMap tiles for the visible area, so do it in port while you have internet.</p>
       <label>Min zoom <input id="dl-min" type="number" min="1" max="17" value="9"></label>
       <label>Max zoom <input id="dl-max" type="number" min="1" max="17" value="13"></label>
       <label class="inline"><input id="dl-seamark" type="checkbox" checked> Seamarks (OpenSeaMap)</label>
-      <p id="dl-progress" class="muted small"></p>
+      <p id="dl-progress" class="muted"></p>
       <menu>
         <button value="cancel">Close</button>
-        <button id="dl-start" type="button">Download</button>
+        <button id="dl-start" class="primary" type="button">Download</button>
       </menu>
     </form>
   </dialog>
 
   <script src="../../node_modules/leaflet/dist/leaflet.js"></script>
   <script src="../../node_modules/geojson-vt/geojson-vt.js"></script>
+  <script src="sun.js"></script>
   <script src="world-chart.js"></script>
   <script src="app.js"></script>
 </body>

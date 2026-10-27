@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const dgram = require('dgram');
@@ -22,7 +22,7 @@ const TILE_SOURCES = {
 };
 const USER_AGENT = 'ShipCabinChart/0.1 (+https://github.com/parshe84/ship-cabin-chart)';
 
-const defaultSettings = { udpPort: 10110, tcpHost: '', tcpPort: 10110, follow: true };
+const defaultSettings = { udpPort: 10110, tcpHost: '', tcpPort: 10110, follow: true, themeMode: 'auto' };
 let settings = { ...defaultSettings };
 try {
   settings = { ...defaultSettings, ...JSON.parse(fs.readFileSync(settingsFile, 'utf8')) };
@@ -190,15 +190,55 @@ ipcMain.handle('save-track', (_e, track) => {
   fs.writeFileSync(path.join(dataDir, 'track.json'), JSON.stringify(track));
 });
 
+function toGpx(track) {
+  const pts = track
+    .map(([lat, lon, t]) => `      <trkpt lat="${lat.toFixed(6)}" lon="${lon.toFixed(6)}">` +
+      (t ? `<time>${new Date(t).toISOString()}</time>` : '') + '</trkpt>')
+    .join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Ship Cabin Chart" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Ship track</name>
+    <trkseg>
+${pts}
+    </trkseg>
+  </trk>
+</gpx>
+`;
+}
+
+ipcMain.handle('export-gpx', async (_e, track) => {
+  const stamp = new Date().toISOString().slice(0, 10);
+  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    title: 'Export track',
+    defaultPath: path.join(app.getPath('documents'), `ship-track-${stamp}.gpx`),
+    filters: [{ name: 'GPX track', extensions: ['gpx'] }],
+  });
+  if (canceled || !filePath) return { ok: false };
+  await fs.promises.writeFile(filePath, toGpx(track));
+  return { ok: true, path: filePath };
+});
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1200,
     height: 800,
-    backgroundColor: '#0b1d2e',
+    backgroundColor: '#02060d',
     title: 'Ship Cabin Chart',
+    icon: path.join(__dirname, 'icon.png'),
     autoHideMenuBar: true,
-    webPreferences: { preload: path.join(__dirname, 'preload.js') },
+    minWidth: 900,
+    minHeight: 640,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
   });
+  // The app only ever shows its own page: no pop-ups, no navigation away.
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.webContents.on('did-finish-load', () => {
     startUdp();

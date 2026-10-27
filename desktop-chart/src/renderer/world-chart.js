@@ -1,40 +1,68 @@
 'use strict';
 
 // Offline world nautical chart: Natural Earth 1:10m vectors, sliced with geojson-vt
-// and drawn on canvas tiles in a paper-chart style.
+// and drawn on canvas tiles. Two looks: neon night and bright day.
 
 (function () {
   const EXTENT = 4096;
   const INDEX_MAX_ZOOM = 14; // deeper zooms reuse z14 geometry, scaled up
 
-  const DEPTH_COLORS = {
-    0: '#d4ecf7', 200: '#bfe0f2', 1000: '#a8d3ec', 2000: '#93c5e5', 3000: '#7fb7dd',
-    4000: '#6ca9d4', 5000: '#5b9bca', 6000: '#4c8dbf', 7000: '#4080b4',
-    8000: '#3573a8', 9000: '#2b679c', 10000: '#225b90',
+  const THEMES = {
+    night: {
+      depth: {
+        0: '#0a2a40', 200: '#082236', 1000: '#071d2f', 2000: '#061928', 3000: '#051622',
+        4000: '#04131e', 5000: '#04111a', 6000: '#030f17', 7000: '#030d14',
+        8000: '#020b11', 9000: '#02090e', 10000: '#01070b',
+      },
+      contour: 'rgba(0, 229, 255, 0.16)',
+      ocean: '#01070b',
+      land: '#070b12',
+      ice: '#0e1824',
+      lake: '#0a2a40',
+      river: 'rgba(0, 229, 255, 0.28)',
+      coast: '#00e5ff',
+      coastWidth: 1.1,
+      coastGlow: 'rgba(0, 229, 255, 0.9)',
+      border: 'rgba(255, 43, 214, 0.5)',
+      reef: '#ff2bd6',
+      graticule: 'rgba(0, 229, 255, 0.07)',
+    },
+    day: {
+      depth: {
+        0: '#c9f1f4', 200: '#a6e4ee', 1000: '#7fcfe6', 2000: '#5db8dc', 3000: '#45a2d2',
+        4000: '#348bc6', 5000: '#2a76b8', 6000: '#2263a8', 7000: '#1c5298',
+        8000: '#174488', 9000: '#133878', 10000: '#0f2d68',
+      },
+      contour: 'rgba(255, 255, 255, 0.35)',
+      ocean: '#0f2d68',
+      land: '#f7f4ed',
+      ice: '#ffffff',
+      lake: '#a6e4ee',
+      river: '#7fcfe6',
+      coast: '#1e293b',
+      coastWidth: 0.9,
+      coastGlow: null,
+      border: '#c084fc',
+      reef: '#f43f5e',
+      graticule: 'rgba(15, 45, 104, 0.12)',
+    },
   };
+  let P = THEMES.night;
 
-  const STYLE = {
-    ocean: '#225b90',
-    land: '#f3e9cf',
-    ice: '#fbfdff',
-    lake: '#bfe0f2',
-    river: '#8cbde0',
-    coast: '#6b5a3e',
-    border: '#a07ea0',
-    reef: '#c0504d',
-    graticule: 'rgba(60, 80, 110, 0.35)',
-  };
-
-  // Draw order; each entry is filled/stroked with its own style.
+  // Draw order; each entry is filled/stroked with the current palette.
   const LAYERS = [
-    { name: 'bathymetry', fill: (p) => DEPTH_COLORS[p.depth] || STYLE.ocean },
-    { name: 'land', fill: () => STYLE.land },
-    { name: 'ice', fill: () => STYLE.ice },
-    { name: 'lakes', fill: () => STYLE.lake, minZoom: (p) => (p.scalerank || 0) - 2 },
-    { name: 'rivers', stroke: () => STYLE.river, width: 1, minZoom: (p) => (p.scalerank || 0) - 4 },
-    { name: 'reefs', stroke: () => STYLE.reef, width: 1.2, dash: [2, 3], minZoom: () => 6 },
-    { name: 'borders', stroke: () => STYLE.border, width: 1, dash: [6, 3] },
-    { name: 'coastline', stroke: () => STYLE.coast, width: 0.8 },
+    {
+      name: 'bathymetry',
+      fill: (p) => P.depth[p.depth] || P.ocean,
+      outline: (p) => (p.depth > 0 ? P.contour : null), // isobaths as thin contour lines
+    },
+    { name: 'land', fill: () => P.land },
+    { name: 'ice', fill: () => P.ice },
+    { name: 'lakes', fill: () => P.lake, minZoom: (p) => (p.scalerank || 0) - 2 },
+    { name: 'rivers', stroke: () => P.river, width: 1, minZoom: (p) => (p.scalerank || 0) - 4 },
+    { name: 'reefs', stroke: () => P.reef, width: 1.2, dash: [2, 3], minZoom: () => 6 },
+    { name: 'borders', stroke: () => P.border, width: 1, dash: [6, 3] },
+    { name: 'coastline', stroke: () => P.coast, width: () => P.coastWidth, glow: () => P.coastGlow },
   ];
 
   const indexes = {};
@@ -72,7 +100,7 @@
       tile.height = size.y * ratio;
       const ctx = tile.getContext('2d');
       ctx.scale(ratio, ratio);
-      ctx.fillStyle = STYLE.ocean;
+      ctx.fillStyle = P.ocean;
       ctx.fillRect(0, 0, size.x, size.y);
 
       // Zooms deeper than the index: take the ancestor tile and magnify the right part.
@@ -90,20 +118,31 @@
         if (!index) continue;
         const t = index.getTile(z, x, y);
         if (!t) continue;
+        const glow = layer.glow && layer.glow();
+        ctx.shadowColor = glow || 'transparent';
+        ctx.shadowBlur = glow ? 6 : 0;
         for (const f of t.features) {
           if (layer.minZoom && coords.z < layer.minZoom(f.tags)) continue;
           drawGeometry(ctx, f, scale, dx, dy);
           if (layer.fill) {
             ctx.fillStyle = layer.fill(f.tags);
             ctx.fill('evenodd');
+            const outline = layer.outline && layer.outline(f.tags);
+            if (outline) {
+              ctx.strokeStyle = outline;
+              ctx.lineWidth = 0.7;
+              ctx.setLineDash([]);
+              ctx.stroke();
+            }
           } else {
             ctx.strokeStyle = layer.stroke(f.tags);
-            ctx.lineWidth = layer.width;
+            ctx.lineWidth = typeof layer.width === 'function' ? layer.width() : layer.width;
             ctx.setLineDash(layer.dash || []);
             ctx.stroke();
           }
         }
       }
+      ctx.shadowBlur = 0;
       ctx.setLineDash([]);
       this._drawGraticule(ctx, coords, size);
       return tile;
@@ -115,7 +154,7 @@
       const se = map.unproject([(coords.x + 1) * size.x, (coords.y + 1) * size.y], coords.z);
       const step = graticuleStep(coords.z);
       const origin = L.point(coords.x * size.x, coords.y * size.y);
-      ctx.strokeStyle = STYLE.graticule;
+      ctx.strokeStyle = P.graticule;
       ctx.lineWidth = 1;
       ctx.beginPath();
       for (let lon = Math.ceil(nw.lng / step) * step; lon <= se.lng; lon += step) {
@@ -141,7 +180,10 @@
     return z >= min - 1;
   }
 
+  const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
   function labelIcon(className, text) {
+    text = escapeHtml(text);
     return L.divIcon({ className: `chart-label ${className}`, html: `<span>${text}</span>`, iconSize: [0, 0] });
   }
 
@@ -210,7 +252,12 @@
       labels.refresh();
     })();
 
-    return { chart, labels, ready };
+    function setTheme(name) {
+      P = THEMES[name] || THEMES.night;
+      chart.redraw();
+    }
+
+    return { chart, labels, ready, setTheme };
   }
 
   window.WorldChart = { createWorldChart };

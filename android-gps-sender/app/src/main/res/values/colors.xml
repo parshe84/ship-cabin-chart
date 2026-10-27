@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="abyss">#FF02060D</color>
+    <color name="glass">#FF0A1626</color>
+    <color name="neon_cyan">#FF00E5FF</color>
+    <color name="neon_pink">#FFFF2BD6</color>
+    <color name="text">#FFE8FBFF</color>
+    <color name="muted">#FF6F8AA6</color>
+</resources>

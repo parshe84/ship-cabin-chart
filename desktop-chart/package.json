@@ -1,7 +1,7 @@
 {
   "name": "ship-cabin-chart",
   "productName": "Ship Cabin Chart",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Ship position on a world nautical chart, received as NMEA from an Android phone over Wi-Fi",
   "main": "src/main.js",
   "author": "parshe84",
@@ -14,12 +14,14 @@
     "dist:linux": "electron-builder --linux AppImage --publish never"
   },
   "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "5.3.0",
+    "@fontsource-variable/space-grotesk": "5.3.0",
     "geojson-vt": "4.0.2",
     "leaflet": "1.9.4"
   },
   "devDependencies": {
-    "electron": "33.2.1",
-    "electron-builder": "25.1.8",
+    "electron": "44.9.3",
+    "electron-builder": "26.18.0",
     "mapshaper": "0.6.102"
   },
   "build": {
@@ -27,7 +29,9 @@
     "files": [
       "src/**/*",
       "node_modules/leaflet/dist/**/*",
-      "node_modules/geojson-vt/geojson-vt.js"
+      "node_modules/geojson-vt/geojson-vt.js",
+      "node_modules/@fontsource-variable/space-grotesk/files/space-grotesk-latin-wght-normal.woff2",
+      "node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2"
     ],
     "win": {
       "target": "portable"
