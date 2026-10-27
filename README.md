@@ -65,7 +65,7 @@ Any app that outputs NMEA works too:
 ## Building
 
 GitHub Actions builds the APK, a Windows portable `.exe` and a Linux AppImage on every push.
-Pushing a tag such as `v1.0.0` also publishes them as a **GitHub Release**. Download them from the
+When the version in `desktop-chart/package.json` changes, CI also publishes them as a **GitHub Release**. Download them from the
 repository's **Releases** page.
 
 Locally:

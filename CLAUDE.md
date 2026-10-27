@@ -17,4 +17,4 @@ The UI is in English.
 ## Building and checking
 - `cd desktop-chart && npm ci && npm test && npm start`
 - The Android SDK isn't available in cloud sessions, so CI (`.github/workflows/build.yml`) compiles and tests Android.
-- A tag `v*` publishes a GitHub Release with the APK, the Windows portable exe and the Linux AppImage.
+- Bumping `version` in `desktop-chart/package.json` and pushing to main publishes GitHub Release `v<version>` with the APK, the Windows portable exe and the Linux AppImage (cloud sessions can't push tags).

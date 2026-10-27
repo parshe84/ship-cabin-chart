@@ -60,24 +60,46 @@ jobs:
           name: desktop-chart-${{ matrix.os }}
           path: ${{ matrix.artifact }}
 
+  # Publishes a GitHub Release when the version in desktop-chart/package.json is new
+  # (or when a v* tag is pushed). The release action creates the tag itself.
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     needs: [android, desktop]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v5
+      - name: Check version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v$(node -p "require('./desktop-chart/package.json').version")"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists, nothing to publish"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/download-artifact@v4
+        if: steps.version.outputs.publish == 'true'
         with:
           path: artifacts
       - name: Collect files
+        if: steps.version.outputs.publish == 'true'
         run: |
           mkdir release
-          cp artifacts/android-gps-sender-apk/*.apk "release/CabinGPS-${GITHUB_REF_NAME}.apk"
+          cp artifacts/android-gps-sender-apk/*.apk "release/CabinGPS-${{ steps.version.outputs.tag }}.apk"
           cp artifacts/desktop-chart-windows-latest/*.exe release/
           cp artifacts/desktop-chart-ubuntu-24.04/*.AppImage release/
           ls -la release
       - uses: softprops/action-gh-release@v2
+        if: steps.version.outputs.publish == 'true'
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Ship Cabin Chart ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           files: release/*
           generate_release_notes: true
