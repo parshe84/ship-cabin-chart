@@ -1,0 +1,60 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android-gps-sender
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - name: Unit tests and APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon testDebugUnitTest assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-gps-sender-apk
+          path: android-gps-sender/app/build/outputs/apk/release/*.apk
+
+  desktop:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: dist:win
+            artifact: desktop-chart/dist/*.exe
+          - os: ubuntu-latest
+            target: dist:linux
+            artifact: desktop-chart/dist/*.AppImage
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop-chart
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop-chart/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run ${{ matrix.target }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-chart-${{ matrix.os }}
+          path: ${{ matrix.artifact }}

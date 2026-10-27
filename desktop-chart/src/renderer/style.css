@@ -1,0 +1,88 @@
+:root {
+  --bg: #0b1d2e;
+  --panel: rgba(11, 29, 46, 0.92);
+  --text: #e6f0f8;
+  --muted: #8aa4bb;
+  --accent: #3fb6ff;
+  --ok: #3ddc84;
+  --warn: #ffb020;
+  --bad: #ff4d4f;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+}
+
+#map { position: absolute; inset: 0; }
+
+#panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 280px;
+  padding: 14px 16px;
+  background: var(--panel);
+  border-radius: 10px;
+  z-index: 1000;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.row.title { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 10px; }
+
+.dot { width: 12px; height: 12px; border-radius: 50%; background: var(--bad); }
+.dot.ok { background: var(--ok); }
+.dot.stale { background: var(--warn); }
+
+.big { font-size: 24px; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0; }
+.grid label { display: block; color: var(--muted); font-size: 12px; }
+.grid b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.grid small { color: var(--muted); margin-left: 3px; }
+
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+
+.buttons { display: flex; flex-direction: column; gap: 6px; margin: 12px 0 8px; }
+
+button {
+  background: #16344f;
+  color: var(--text);
+  border: 1px solid #24527a;
+  border-radius: 6px;
+  padding: 7px 10px;
+  cursor: pointer;
+  font: inherit;
+}
+button:hover { background: #1d4467; }
+button.toggle.on { background: var(--accent); color: #002033; border-color: var(--accent); }
+
+dialog {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid #24527a;
+  border-radius: 10px;
+  width: 420px;
+}
+dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+dialog label { display: block; margin: 10px 0; font-size: 14px; }
+dialog label.inline { display: flex; gap: 8px; align-items: center; }
+dialog input[type="text"], dialog input[type="number"] {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: #0f2a42;
+  color: var(--text);
+  border: 1px solid #24527a;
+  border-radius: 5px;
+}
+dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; }
+
+.ship-icon { transition: transform 0.3s; }

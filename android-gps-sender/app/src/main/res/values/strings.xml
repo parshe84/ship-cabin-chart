@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GPS для каюты</string>
+    <string name="hint">Положите телефон на иллюминатор и подключите его к той же Wi-Fi сети, что и компьютер (или раздайте точку доступа с телефона).</string>
+    <string name="host_hint">IP компьютера (255.255.255.255 — всем в сети)</string>
+    <string name="port_hint">UDP-порт</string>
+    <string name="keep_screen_on">Не гасить экран</string>
+    <string name="start">Начать передачу</string>
+    <string name="stop">Остановить</string>
+    <string name="stopped">Передача остановлена</string>
+    <string name="waiting_fix">Жду спутники… (→ %1$s, спутников: %2$d)</string>
+    <string name="sending">Передаётся → %1$s\nпакетов: %2$d, спутников: %3$d</string>
+    <string name="need_location">Без доступа к геолокации передача невозможна</string>
+</resources>
