@@ -25,10 +25,13 @@ The UI is in English.
   - `scripts/build-osm-maritime.py`: builds `maritime.json` (TSS + territorial/contiguous/EEZ/baseline lines, ODbL) from the OSM planet ORC on S3; drawn by `drawMaritime` in `world-chart.js`.
   - `scripts/build-osm-land.py`: builds `src/maps/land/*.bin` (OSM land polygons, 5° squares, varint-delta binary) from
     Daylight earth `theme=land`; `world-chart.js` draws them instead of Natural Earth land from zoom 8 (`COAST_MIN_ZOOM`).
+  - `scripts/build-gebco.py`: builds `src/maps/depth/*.bin` (GEBCO 2026 isobaths for shelf squares, binary like the land
+    squares plus a uint16 depth per polygon) from the GEBCO GeoTIFFs in `.cache/gebco`; `world-chart.js` draws them from
+    zoom 8 over the general layer and uses them in `depthAt`. Its `DEPTHS` must match `DEPTH_LEVELS` (0 aside).
   - `scripts/build-osm-seamarks.py`: builds `src/maps/seamarks/*.json` (OpenSeaMap nodes mapped to S-57 classes, 10° squares)
     from the planet ORC; `enc-layer.js` loads them as built-in "cells" (band 0, per-object min zoom).
   - `scripts/build-world-map.js`: rebuilds the Natural Earth layers in `src/maps/world` (`npm run build-map`).
-  - `scripts/build-bathymetry.py`: rebuilds `src/maps/world/bathymetry.json` (isobaths 10…10000 m) from ETOPO1 via Terrarium tiles on S3. `world-chart.js` `DEPTH_LEVELS` must match its `DEPTHS`.
+  - `scripts/build-bathymetry.py`: rebuilds `src/maps/world/bathymetry.json` (isobaths 10…10000 m) from ETOPO1 via Terrarium tiles on S3. `world-chart.js` `DEPTH_LEVELS` must contain its `DEPTHS`.
 - Fonts (Space Grotesk, JetBrains Mono) are bundled from `@fontsource-variable` because the app must work offline.
 
 ## Building and checking

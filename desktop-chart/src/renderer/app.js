@@ -9,6 +9,7 @@ map.zoomControl.setPosition('topleft');
 const world = WorldChart.createWorldChart(map, window.ship.loadWorldLayer, {
   onPortClick: (port, marker) => showPortPopup(port, marker),
   loadLand: (name) => window.ship.loadLand(name),
+  loadDepth: (name) => window.ship.loadDepth(name),
 });
 world.chart.addTo(map);
 world.labels.addTo(map);
@@ -127,7 +128,7 @@ const DepthLegend = L.Control.extend({
   options: { position: 'bottomleft' },
   onAdd() {
     const div = L.DomUtil.create('div', 'depth-legend');
-    div.innerHTML = '<div class="title"><span>Depth, m</span><span>ETOPO1 · general chart</span></div>' +
+    div.innerHTML = '<div class="title"><span>Depth, m</span><span>GEBCO 2026 · ETOPO1</span></div>' +
       '<div class="swatches"></div><div class="ticks"></div><div class="cursor"></div>';
     L.DomEvent.disableClickPropagation(div);
     return div;

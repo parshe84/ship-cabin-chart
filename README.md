@@ -95,6 +95,13 @@ tiles on AWS Open Data. The HUD shows the **chart depth under the ship**, and th
 **under the cursor**. Resolution is about 2 km: this is a general chart for overview, not for navigation in
 shallow water.
 
+**Detailed depths from zoom 8: GEBCO 2026.** On continental shelves, coasts and banks (1,050 squares of 5°,
+~21 MB) the depths come from the [GEBCO 2026 Grid](https://www.gebco.net/) (15 arc-seconds, about 460 m;
+GEBCO Compilation Group (2026) GEBCO 2026 Grid, public domain), with isobaths at **5, 10, 20, 30, 50, 100,
+200 m** and deeper. The depth under the cursor and under the ship uses them too. Near the coast GEBCO is
+partly interpolated, so it shows the shape of the sea floor, not chart soundings: GEBCO itself must not be
+used for navigation. Rebuilt with `python3 scripts/build-gebco.py` from the GEBCO GeoTIFF tiles.
+
 **Traffic separation schemes and maritime limits** (layers menu), from [OpenStreetMap](https://www.openstreetmap.org/copyright)
 (© OpenStreetMap contributors, data under the [ODbL 1.0](https://opendatacommons.org/licenses/odbl/)):
 

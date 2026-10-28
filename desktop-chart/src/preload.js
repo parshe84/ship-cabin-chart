@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('ship', {
   saveTrack: (t) => ipcRenderer.invoke('save-track', t),
   loadWorldLayer: (name) => ipcRenderer.invoke('load-world-layer', name),
   loadLand: (name) => ipcRenderer.invoke('load-land', name),
+  loadDepth: (name) => ipcRenderer.invoke('load-depth', name),
   exportGpx: (track) => ipcRenderer.invoke('export-gpx', track),
   exportRouteGpx: (waypoints) => ipcRenderer.invoke('export-route-gpx', waypoints),
   exportRouteRtz: (waypoints, name) => ipcRenderer.invoke('export-route-rtz', waypoints, name),

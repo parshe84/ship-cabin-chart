@@ -8,7 +8,8 @@
   const INDEX_MAX_ZOOM = 14; // deeper zooms reuse z14 geometry, scaled up
 
   // Isobaths in bathymetry.json (see scripts/build-bathymetry.py); 0 = sea surface.
-  const DEPTH_LEVELS = [0, 10, 20, 50, 100, 200, 500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000];
+  // 5 and 30 m only exist in the detailed GEBCO squares (scripts/build-gebco.py DEPTHS).
+  const DEPTH_LEVELS = [0, 5, 10, 20, 30, 50, 100, 200, 500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000];
 
   // Colour for each depth level, interpolated along a ramp of [position 0..1, hex] stops.
   function depthPalette(stops) {
@@ -182,14 +183,17 @@
 
   const indexes = {};
 
-  // --- Detailed coastline: OpenStreetMap land polygons (scripts/build-osm-land.py) from zoom 8 ---
+  // --- Detailed squares from zoom 8: OSM land polygons (scripts/build-osm-land.py) and
+  // GEBCO 2026 isobaths (scripts/build-gebco.py), binary 5° squares loaded when visible ---
 
-  const COAST_MIN_ZOOM = 8;
-  const COAST_MAX_LOADED = 40;
-  const coast = { squares: new Map(), load: null };
+  const DETAIL_MIN_ZOOM = 8;
+  const DETAIL_MAX_LOADED = 40;
+  const coast = { squares: new Map(), load: null, depth: false };
+  const depthSq = { squares: new Map(), load: null, depth: true };
 
-  // Binary square -> { fill: geojson-vt index, line: geojson-vt index, polys: [{ bbox, rings }] }.
-  function decodeLand(bytes, [sx, sy]) {
+  // Binary square -> { fill, line: geojson-vt indexes, polys: [{ bbox, rings, depth }] }.
+  // Depth squares carry a uint16 depth before each polygon.
+  function decodeSquare(bytes, [sx, sy], withDepth) {
     const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     let i = 0;
     const u32 = () => { const v = dv.getUint32(i, true); i += 4; return v; };
@@ -201,8 +205,10 @@
     const fills = [], lines = [], polys = [];
     const edge = (a, b) => (a[0] === b[0] && (a[0] === sx || a[0] === sx + 5)) || (a[1] === b[1] && (a[1] === sy || a[1] === sy + 5));
     for (let n = u32(); n > 0; n--) {
+      let depth = null;
+      if (withDepth) { depth = dv.getUint16(i, true); i += 2; }
       let px = Math.round(sx * 1e5), py = Math.round(sy * 1e5);
-      const rings = [];
+      const rings = [], strokes = [];
       let w = 180, s = 90, e = -180, nn = -90;
       for (let r = u32(); r > 0; r--) {
         const ring = [];
@@ -218,63 +224,76 @@
         }
         ring.push(ring[0]);
         rings.push(ring);
-        // Coastline strokes: the ring without the parts lying on the square's own edges.
+        // Strokes (coastline / isobath): the ring without the parts lying on the square's own edges.
         let cur = [ring[0]];
         for (let k = 1; k < ring.length; k++) {
           if (edge(ring[k - 1], ring[k])) {
-            if (cur.length > 1) lines.push(cur);
+            if (cur.length > 1) strokes.push(cur);
             cur = [ring[k]];
           } else cur.push(ring[k]);
         }
-        if (cur.length > 1) lines.push(cur);
+        if (cur.length > 1) strokes.push(cur);
       }
-      fills.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: rings }, properties: {} });
-      polys.push({ bbox: [w, s, e, nn], rings });
+      fills.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: rings }, properties: { depth } });
+      if (strokes.length) lines.push({ type: 'Feature', geometry: { type: 'MultiLineString', coordinates: strokes }, properties: { depth } });
+      polys.push({ bbox: [w, s, e, nn], rings, depth });
     }
     const opts = { maxZoom: INDEX_MAX_ZOOM, extent: EXTENT, buffer: 64, tolerance: 1 };
     return {
       fill: geojsonvt({ type: 'FeatureCollection', features: fills }, opts),
-      line: geojsonvt({ type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'MultiLineString', coordinates: lines }, properties: {} }] }, opts),
+      line: geojsonvt({ type: 'FeatureCollection', features: lines }, opts),
       polys,
     };
   }
 
-  function coastSquares(w, s, e, n) {
+  function storeSquares(store, w, s, e, n) {
     const out = [];
-    for (const sq of coast.squares.values()) {
+    for (const sq of store.squares.values()) {
       const [a, b, c, d] = sq.bbox;
-      if (c >= w && a <= e && d >= s && b <= n) out.push(sq);
+      if (c >= w && a <= e && d >= s && b <= n && !sq.failed) out.push(sq);
     }
     return out;
   }
 
-  function ensureSquare(sq) {
+  function ensureSquare(store, sq) {
     sq.used = performance.now();
     if (sq.data) return Promise.resolve(sq.data);
     if (!sq.loading) {
-      sq.loading = coast.load(sq.name)
+      sq.loading = store.load(sq.name)
         .then((bytes) => {
-          sq.data = decodeLand(bytes, sq.bbox);
-          const loaded = [...coast.squares.values()].filter((q) => q.data).sort((a, b) => a.used - b.used);
-          for (const q of loaded.slice(0, Math.max(0, loaded.length - COAST_MAX_LOADED))) q.data = null;
+          sq.data = decodeSquare(bytes, sq.bbox, store.depth);
+          const loaded = [...store.squares.values()].filter((q) => q.data).sort((a, b) => a.used - b.used);
+          for (const q of loaded.slice(0, Math.max(0, loaded.length - DETAIL_MAX_LOADED))) q.data = null;
           return sq.data;
         })
-        .catch((err) => { console.warn(`coast ${sq.name}: ${err.message}`); sq.failed = true; return null; })
+        .catch((err) => { console.warn(`${sq.name}: ${err.message}`); sq.failed = true; return null; })
         .finally(() => { sq.loading = null; });
     }
     return sq.loading;
   }
 
+  const inPoly = (p, lat, lon) => {
+    const [w, s, e, n] = p.bbox;
+    return lon >= w && lon <= e && lat >= s && lat <= n && p.rings.reduce((inside, r) => (ringContains(r, lon, lat) ? !inside : inside), false);
+  };
+
   // true / false when a loaded detailed square covers the point, null otherwise.
   function coastLandAt(lat, lon) {
     if (!coast.squares.size) return null;
-    const sq = coastSquares(lon, lat, lon, lat)[0];
+    const sq = storeSquares(coast, lon, lat, lon, lat)[0];
     if (!sq) return false; // no land polygons in this square at all
     if (!sq.data) return null;
-    return sq.data.polys.some((p) => {
-      const [w, s, e, n] = p.bbox;
-      return lon >= w && lon <= e && lat >= s && lat <= n && p.rings.reduce((inside, r) => (ringContains(r, lon, lat) ? !inside : inside), false);
-    });
+    return sq.data.polys.some((p) => inPoly(p, lat, lon));
+  }
+
+  // Depth band from a loaded GEBCO square, or null.
+  function detailDepthAt(lat, lon) {
+    const sq = storeSquares(depthSq, lon, lat, lon, lat)[0];
+    if (!sq || !sq.data) return null;
+    let deepest = 0;
+    for (const p of sq.data.polys) if (p.depth > deepest && inPoly(p, lat, lon)) deepest = p.depth;
+    const i = DEPTH_LEVELS.indexOf(deepest);
+    return { from: deepest, to: DEPTH_LEVELS[i + 1] ?? null, gebco: true };
   }
 
   function graticuleStep(z) {
@@ -300,31 +319,72 @@
   }
 
   const WorldChartLayer = L.GridLayer.extend({
-    options: { tileSize: 256, maxZoom: 18, attribution: 'Natural Earth · ETOPO1 depths (NOAA) via Mapzen Terrarium · TSS &amp; maritime limits © OpenStreetMap contributors (ODbL)' },
+    options: { tileSize: 256, maxZoom: 18, attribution: 'Natural Earth · depths: GEBCO 2026 Grid, ETOPO1 (NOAA) via Mapzen Terrarium · TSS &amp; maritime limits © OpenStreetMap contributors (ODbL)' },
 
     createTile(coords, done) {
       const size = this.getTileSize();
       const tile = document.createElement('canvas');
-      let squares = [];
-      if (coords.z >= COAST_MIN_ZOOM && coast.squares.size) {
+      let squares = [], depths = [];
+      if (coords.z >= DETAIL_MIN_ZOOM) {
         const nw = this._map.unproject([coords.x * size.x, coords.y * size.y], coords.z);
         const se = this._map.unproject([(coords.x + 1) * size.x, (coords.y + 1) * size.y], coords.z);
-        squares = coastSquares(nw.lng, se.lat, se.lng, nw.lat).filter((q) => !q.failed);
+        squares = storeSquares(coast, nw.lng, se.lat, se.lng, nw.lat);
+        depths = storeSquares(depthSq, nw.lng, se.lat, se.lng, nw.lat);
       }
-      const useCoast = coords.z >= COAST_MIN_ZOOM && coast.squares.size > 0;
-      if (squares.some((q) => !q.data)) {
-        Promise.all(squares.map(ensureSquare)).then(() => {
-          this._draw(tile, coords, size, useCoast, squares);
+      const useCoast = coords.z >= DETAIL_MIN_ZOOM && coast.squares.size > 0;
+      if (squares.some((q) => !q.data) || depths.some((q) => !q.data)) {
+        Promise.all([...squares.map((q) => ensureSquare(coast, q)), ...depths.map((q) => ensureSquare(depthSq, q))]).then(() => {
+          this._draw(tile, coords, size, useCoast, squares, depths);
           done(null, tile);
         });
       } else {
-        this._draw(tile, coords, size, useCoast, squares);
+        this._draw(tile, coords, size, useCoast, squares, depths);
         setTimeout(() => done(null, tile), 0);
       }
       return tile;
     },
 
-    _draw(tile, coords, size, useCoast, squares) {
+    // GEBCO isobaths over the general depth layer, each square clipped to its own extent.
+    _drawDepth(ctx, depths, coords, size, z, x, y, scale, dx, dy, overlay) {
+      const map = this._map;
+      const ox = coords.x * size.x, oy = coords.y * size.y;
+      for (const sq of depths) {
+        if (!sq.data) continue;
+        const [w, s, e, n] = sq.bbox;
+        const a = map.project([n, w], coords.z), b = map.project([s, e], coords.z);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(a.x - ox, a.y - oy, b.x - a.x, b.y - a.y);
+        ctx.clip();
+        ctx.globalAlpha = overlay ? 0.45 : 1;
+        ctx.fillStyle = P.depth[0];
+        ctx.fillRect(a.x - ox, a.y - oy, b.x - a.x, b.y - a.y);
+        const t = sq.data.fill.getTile(z, x, y);
+        if (t) {
+          for (const f of t.features) {
+            drawGeometry(ctx, f, scale, dx, dy);
+            ctx.fillStyle = P.depth[f.tags.depth] || P.ocean;
+            ctx.fill('evenodd');
+          }
+        }
+        ctx.globalAlpha = 1;
+        const tl = sq.data.line.getTile(z, x, y);
+        if (tl) {
+          ctx.lineWidth = 0.7;
+          ctx.setLineDash([]);
+          for (const f of tl.features) {
+            const colour = LAYERS[0].outline({ depth: f.tags.depth }, coords.z);
+            if (!colour) continue;
+            drawGeometry(ctx, f, scale, dx, dy);
+            ctx.strokeStyle = colour;
+            ctx.stroke();
+          }
+        }
+        ctx.restore();
+      }
+    },
+
+    _draw(tile, coords, size, useCoast, squares, depths) {
       const ratio = window.devicePixelRatio || 1;
       tile.width = size.x * ratio;
       tile.height = size.y * ratio;
@@ -349,6 +409,7 @@
 
       ctx.lineJoin = 'round';
       for (const layer of LAYERS) {
+        if (layer.name === 'land' && depths.length) this._drawDepth(ctx, depths, coords, size, z, x, y, scale, dx, dy, overlay);
         if (overlay && layer.name === 'land') {
           if (useCoast) {
             ctx.globalCompositeOperation = 'destination-out';
@@ -563,6 +624,8 @@
     const detailed = coastLandAt(lat, lon);
     if (detailed === true) return { land: true };
     if (detailed === null && landPolys.some((p) => polyContains(p, lat, lon))) return { land: true };
+    const gebco = detailDepthAt(lat, lon);
+    if (gebco) return gebco;
     for (const p of depthPolys) {
       if (!polyContains(p, lat, lon)) continue;
       const i = DEPTH_LEVELS.indexOf(p.depth);
@@ -579,6 +642,7 @@
   function createWorldChart(map, loadLayer, opts = {}) {
     onPortClick = opts.onPortClick || null;
     coast.load = opts.loadLand || null;
+    depthSq.load = opts.loadDepth || null;
     const chart = new WorldChartLayer({ zIndex: 1 });
     const overlay = new WorldChartLayer({ overlay: true, minZoom: 9, zIndex: 3, attribution: '' });
     const labels = createLabelLayer(map);
@@ -600,10 +664,11 @@
           maxZoom: INDEX_MAX_ZOOM, extent: EXTENT, buffer: 64, tolerance: 2,
         });
       }
-      if (coast.load) {
+      for (const [store, index] of [[coast, 'land-index'], [depthSq, 'depth-index']]) {
+        if (!store.load) continue;
         try {
-          for (const sq of JSON.parse(await loadLayer('land-index'))) coast.squares.set(sq.name, { ...sq, data: null });
-        } catch { /* built without the detailed coastline */ }
+          for (const sq of JSON.parse(await loadLayer(index))) store.squares.set(sq.name, { ...sq, data: null });
+        } catch { /* built without this detail layer */ }
       }
       labelData.marine = JSON.parse(await loadLayer('marine-labels')).features;
       labelData.ports = JSON.parse(await loadLayer('ports')).features;

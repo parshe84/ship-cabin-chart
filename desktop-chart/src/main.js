@@ -320,6 +320,7 @@ const WORLD_LAYERS = new Set(['bathymetry', 'land', 'coastline', 'ice', 'lakes',
   'marine-labels', 'ports', 'places', 'sea-routes', 'distance-table', 'maritime']);
 ipcMain.handle('load-world-layer', (_e, name) => {
   if (name === 'land-index') return fs.promises.readFile(path.join(__dirname, 'maps', 'land', 'index.json'), 'utf8');
+  if (name === 'depth-index') return fs.promises.readFile(path.join(__dirname, 'maps', 'depth', 'index.json'), 'utf8');
   if (!WORLD_LAYERS.has(name)) throw new Error(`unknown layer ${name}`);
   return fs.promises.readFile(path.join(__dirname, 'maps', 'world', `${name}.json`), 'utf8');
 });
@@ -527,6 +528,12 @@ let encBusy = false;
 ipcMain.handle('load-land', async (_e, name) => {
   if (!/^L_[EW]\d{3}_[NS]\d{2}$/.test(String(name))) throw new Error(`unknown land square ${name}`);
   return new Uint8Array(await fs.promises.readFile(path.join(__dirname, 'maps', 'land', `${name}.bin`)));
+});
+
+// Detailed depths (scripts/build-gebco.py): binary 5° squares of GEBCO 2026 isobaths.
+ipcMain.handle('load-depth', async (_e, name) => {
+  if (!/^D_[EW]\d{3}_[NS]\d{2}$/.test(String(name))) throw new Error(`unknown depth square ${name}`);
+  return new Uint8Array(await fs.promises.readFile(path.join(__dirname, 'maps', 'depth', `${name}.bin`)));
 });
 
 // Built-in worldwide seamarks (scripts/build-osm-seamarks.py): index.json and 10° squares.
