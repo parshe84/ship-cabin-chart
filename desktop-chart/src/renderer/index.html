@@ -111,7 +111,8 @@
       </div>
       <div class="stat">
         <label>Satellites</label>
-        <div class="mid"><span id="sats">—</span></div>
+        <div class="mid"><span id="sats">—</span><small id="sats-view"></small></div>
+        <div class="sat-systems" id="sat-systems"></div>
       </div>
       <div class="stat stat-wide depth-stat">
         <label>Chart depth</label>
@@ -192,6 +193,7 @@
       <span id="status-map">Loading world chart…</span>
       <span id="status-udp"></span>
       <span id="status-tcp"></span>
+      <span id="status-serial"></span>
       <span id="status-ais"></span>
       <span id="status-version"></span>
     </footer>
@@ -281,6 +283,20 @@
       <label>TCP port
         <input id="tcp-port" type="number" min="1" max="65535">
       </label>
+      <h4>Bluetooth / serial (COM port)</h4>
+      <p class="muted">Phone over Bluetooth: pair it once in Windows (Settings → Bluetooth &amp; devices → Add device),
+        turn on <b>Send over Bluetooth</b> in Cabin GPS, then choose the phone's port here
+        (“Standard Serial over Bluetooth link”). A USB GPS or an NMEA/AIS adapter works the same way.</p>
+      <div class="serial-row">
+        <select id="serial-baud" title="Speed: Bluetooth ignores it; USB GPS usually 4800, AIS 38400">
+          <option value="4800">4800</option><option value="9600">9600</option>
+          <option value="38400">38400</option><option value="115200">115200</option>
+        </select>
+        <button type="button" id="serial-choose">Choose COM port…</button>
+        <button type="button" id="serial-stop">Disconnect</button>
+      </div>
+      <div id="serial-list" class="serial-list"></div>
+      <p class="muted" id="serial-status">Not connected</p>
       <div class="pairing">
         <div id="pairing-qr" class="qr-list"></div>
         <p class="muted">Scan with <b>Cabin GPS → Scan QR code</b> on the phone: it fills in the address and starts sending.</p>

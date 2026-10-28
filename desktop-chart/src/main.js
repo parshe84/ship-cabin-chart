@@ -47,7 +47,7 @@ let win;
 let udpSocket;
 let tcpClient;
 let tcpReconnectTimer;
-let lineBuffer = '';
+const lineBuffers = {}; // per source, so UDP, TCP and serial lines never mix
 const ais = new AisDecoder();
 
 function send(channel, payload) {
@@ -55,9 +55,8 @@ function send(channel, payload) {
 }
 
 function handleData(chunk, source) {
-  lineBuffer += chunk.toString('ascii');
-  const lines = lineBuffer.split(/\r?\n/);
-  lineBuffer = lines.pop();
+  const lines = ((lineBuffers[source] || '') + chunk.toString('ascii')).split(/\r?\n/);
+  lineBuffers[source] = lines.pop().slice(-4096);
   for (const line of lines) {
     if (line.startsWith('!')) {
       const msg = ais.push(line);
@@ -586,6 +585,43 @@ ipcMain.handle('import-route', async () => {
   }
 });
 
+// --- Serial / Bluetooth COM port (Web Serial in the renderer) ---
+// The phone's Bluetooth serial service, a USB GPS or an NMEA/AIS adapter all appear as COM ports.
+// The renderer reads the port; this side picks the port and only grants the one the user chose.
+
+let serialPick = null;
+
+function setupSerial(ses) {
+  ses.on('select-serial-port', (event, portList, _wc, callback) => {
+    event.preventDefault();
+    if (serialPick) serialPick('');
+    serialPick = callback;
+    send('serial-ports', portList.map((p) => ({ portId: p.portId, portName: p.portName, displayName: p.displayName || p.portName })));
+  });
+  ses.setPermissionCheckHandler((_wc, permission) => permission === 'serial' || permission === 'fullscreen' || permission === 'clipboard-sanitized-write');
+  ses.setDevicePermissionHandler((details) => details.deviceType === 'serial' && !!settings.serialPort &&
+    (details.device.portName === settings.serialPort || details.device.displayName === settings.serialPort));
+}
+
+ipcMain.handle('serial-select', (_e, port) => {
+  if (!serialPick) return false;
+  const pick = serialPick;
+  serialPick = null;
+  if (port && port.portId) {
+    settings = { ...settings, serialPort: String(port.portName || ''), serialBaud: Number(port.baud) || 4800 };
+    saveSettings();
+  }
+  pick(port && port.portId ? String(port.portId) : '');
+  return true;
+});
+ipcMain.handle('serial-forget', () => {
+  settings = { ...settings, serialPort: '' };
+  saveSettings();
+});
+ipcMain.on('serial-data', (_e, data) => {
+  if (data && data.byteLength) handleData(Buffer.from(data), 'serial');
+});
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1200,
@@ -606,6 +642,7 @@ function createWindow() {
   // The app only ever shows its own page: no pop-ups, no navigation away.
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (e) => e.preventDefault());
+  setupSerial(win.webContents.session);
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.webContents.on('did-finish-load', () => {
     startUdp();

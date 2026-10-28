@@ -988,3 +988,12 @@ dialog.enc-info { width: min(520px, 92vw); max-height: 80vh; overflow: auto; }
 .enc-obj table { margin-top: 6px; border-collapse: collapse; font: 500 11.5px "JetBrains Mono", monospace; }
 .enc-obj th { text-align: left; color: var(--muted); font-weight: 500; padding: 2px 12px 2px 0; vertical-align: top; }
 .enc-obj td { padding: 2px 0; word-break: break-word; }
+
+/* Satellites per system and serial port picker */
+.sat-systems { margin-top: 4px; font: 500 10.5px "JetBrains Mono", monospace; color: var(--muted); line-height: 1.5; }
+.sat-systems b { font-weight: 600; }
+#sats-view { margin-left: 2px; }
+.serial-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.serial-row select { width: auto; }
+.serial-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.serial-list button { text-align: left; }

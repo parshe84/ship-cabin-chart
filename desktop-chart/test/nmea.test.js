@@ -51,7 +51,7 @@ test('void RMC is reported as invalid', () => {
 });
 
 test('unsupported sentences return null', () => {
-  assert.strictEqual(parseSentence(withChecksum('GPGSV,1,1,00')), null);
+  assert.strictEqual(parseSentence(withChecksum('GPGSA,A,3,04,05,,,,,,,,,,,2.5,1.3,2.1')), null);
   assert.strictEqual(parseSentence('garbage'), null);
 });
 
@@ -70,4 +70,9 @@ test('HDT and HDG headings', () => {
   // 350 magnetic with 15 E variation -> 005 true
   assert.strictEqual(parseSentence(withChecksum('HCHDG,350.0,,,15.0,E')).heading, 5);
   assert.strictEqual(parseSentence(withChecksum('HCHDG,10.0,,,15.0,W')).heading, 355);
+});
+
+test('parses GSV satellites in view per system', () => {
+  assert.deepEqual(parseSentence(withChecksum('GLGSV,2,1,07,71,45,010,35,72,20,100,28')), { type: 'GSV', valid: true, talker: 'GL', inView: 7, part: 1 });
+  assert.deepEqual(parseSentence(withChecksum('BDGSV,1,1,03,05,30,030,30')), { type: 'GSV', valid: true, talker: 'GB', inView: 3, part: 1 });
 });

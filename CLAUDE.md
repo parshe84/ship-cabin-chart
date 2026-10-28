@@ -5,9 +5,10 @@ The UI is in English.
 
 ## Layout
 - `android-gps-sender/`: Kotlin app "Cabin GPS". `GpsSenderService` (foreground, location) builds NMEA
-  RMC/GGA/VTG with `NmeaBuilder` and sends it over UDP (default 255.255.255.255:10110). Unit tests are in `app/src/test`.
+  RMC/GGA/VTG (+ GSV per system) with `NmeaBuilder` and sends it over UDP (default 255.255.255.255:10110) and/or
+  Bluetooth SPP (`BluetoothNmeaServer`). `SkyView`/`SignalBarsView` draw the satellites. Unit tests are in `app/src/test`.
 - `desktop-chart/`: portable Electron app.
-  - `src/main.js`: UDP/TCP NMEA input, `tilecache://` protocol (OSM/OpenSeaMap disk cache + area download), GPX export, settings and track stored in `ShipCabinChart-data` next to the exe.
+  - `src/main.js`: UDP/TCP NMEA input, serial/Bluetooth COM ports via Web Serial (port chosen in Setup, read in `app.js`), `tilecache://` protocol (OSM/OpenSeaMap disk cache + area download), GPX export, settings and track stored in `ShipCabinChart-data` next to the exe.
   - `src/nmea.js` + `test/nmea.test.js`: parser (`npm test`).
   - `src/renderer/world-chart.js`: offline world chart. Natural Earth 1:10m vectors in `src/maps/world/*.json`, sliced with geojson-vt, drawn on canvas; palettes for the `night` and `day` themes.
   - `src/renderer/app.js`: HUD, themes (auto by sun elevation, see `sun.js`), track, labels.

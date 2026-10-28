@@ -33,6 +33,13 @@ position. **GPX** exports the track for OpenCPN, Navionics, Google Earth and sim
 - **QR pairing.** *Setup* on the laptop shows a QR code; **Scan QR code** in Cabin GPS fills in the address
   and starts sending. No typing IP addresses, and the position goes only to this laptop instead of being
   broadcast to the whole network.
+- **Bluetooth.** Cabin GPS can send over Bluetooth instead of (or as well as) Wi-Fi, as a standard serial port (SPP).
+  Pair the phone once in Windows (*Settings → Bluetooth & devices → Add device*; **Make phone visible for pairing**
+  in the app helps), turn on **Send over Bluetooth**, then pick the phone's COM port in *Setup → Bluetooth / serial*.
+  The laptop reconnects by itself when the link drops. The same picker takes a USB GPS or an NMEA/AIS adapter.
+- **Satellites.** The app shows a sky plot and the signal of every satellite, with used / in view per system:
+  GPS (NAVSTAR), GLONASS, Galileo, BeiDou, QZSS, NavIC and SBAS, whatever the phone's GNSS chip supports
+  (Android uses them all automatically). `GSV` sentences carry them to the laptop's *Satellites* card.
 - **Barometer.** If the phone has a pressure sensor, the HUD shows pressure, the 1 h / 3 h trend and a
   barograph. A fall of **3 hPa in 3 hours** raises a gale warning (sound + banner), 6 hPa a storm warning.
   A ship weather station sending NMEA `XDR`/`MDA` works too.

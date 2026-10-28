@@ -279,8 +279,28 @@ function render() {
   if (state.follow) map.panTo(pos, { animate: true });
 }
 
+// Satellites in view per system, from GSV sentences (kept for 10 s after the last one).
+const SYSTEMS = { GP: ['GPS', '#00e5ff'], GL: ['GLONASS', '#ff2bd6'], GA: ['Galileo', '#39ff88'], GB: ['BeiDou', '#ffd23f'], GQ: ['QZSS', '#ff8a3d'], GI: ['NavIC', '#b388ff'] };
+const gsv = {};
+
+function renderSatSystems() {
+  const now = Date.now();
+  const live = Object.entries(gsv).filter(([, v]) => now - v.at < 10e3);
+  const total = live.reduce((n, [, v]) => n + v.n, 0);
+  $('sats-view').textContent = total ? ` / ${total}` : '';
+  $('sat-systems').innerHTML = live
+    .map(([t, v]) => `<span><b style="color:${(SYSTEMS[t] || [t, 'inherit'])[1]}">${(SYSTEMS[t] || [t])[0]}</b> ${v.n}</span>`)
+    .join(' · ');
+}
+setInterval(renderSatSystems, 5000);
+
 window.ship.onFix((fix) => {
   if (!fix.valid) return;
+  if (fix.type === 'GSV') {
+    gsv[fix.talker] = { n: fix.inView, at: fix.receivedAt };
+    renderSatSystems();
+    return;
+  }
   // Sensor sentences from the phone (heading, pressure) arrive between position fixes.
   if (fix.heading != null) {
     state.phoneHdg = fix.heading;
@@ -1206,4 +1226,114 @@ map.on('click', (e) => {
     enc.setBuiltin(JSON.parse(await window.ship.loadSeamarks('index')));
   } catch { /* built without the seamark layer */ }
   await refreshEnc();
+})();
+
+// --- Bluetooth / serial COM port (Web Serial; main grants only the chosen port) ---
+
+const serial = { port: null, reader: null, wanted: false, retry: null, name: '' };
+
+function serialStatus(text) {
+  $('serial-status').textContent = text;
+  $('status-serial').textContent = serial.wanted ? `Serial · ${text}` : '';
+}
+
+async function openSerial(port, baud) {
+  clearTimeout(serial.retry);
+  serial.port = port;
+  try {
+    await port.open({ baudRate: baud });
+  } catch (err) {
+    if (!/already open/i.test(err.message)) throw err;
+  }
+  serialStatus(`${serial.name || 'port'} · connected`);
+  let bytes = 0;
+  const started = Date.now();
+  while (port.readable && serial.wanted) {
+    serial.reader = port.readable.getReader();
+    try {
+      for (;;) {
+        const { value, done } = await serial.reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+        window.ship.serialData(value);
+        if (bytes && Date.now() - started > 1000) serialStatus(`${serial.name || 'port'} · receiving`);
+      }
+    } finally {
+      serial.reader.releaseLock();
+      serial.reader = null;
+    }
+  }
+}
+
+async function closeSerial() {
+  try { if (serial.reader) await serial.reader.cancel(); } catch { /* already closed */ }
+  try { if (serial.port) await serial.port.close(); } catch { /* already closed */ }
+  serial.port = null;
+}
+
+// Keeps the chosen port connected: Bluetooth links drop when the phone sleeps or walks away.
+async function serialConnect() {
+  if (!serial.wanted || !navigator.serial) return;
+  const baud = Number($('serial-baud').value) || 4800;
+  try {
+    const [port] = await navigator.serial.getPorts();
+    if (!port) throw new Error('port not available (phone off or out of range?)');
+    await openSerial(port, baud);
+    throw new Error('connection closed');
+  } catch (err) {
+    await closeSerial();
+    if (!serial.wanted) return;
+    serialStatus(`${serial.name || 'port'} · ${err.message} · retrying`);
+    serial.retry = setTimeout(serialConnect, 5000);
+  }
+}
+
+window.ship.onSerialPorts((list) => {
+  const box = $('serial-list');
+  box.innerHTML = list.length
+    ? list.map((p, i) => `<button type="button" data-i="${i}">${escapeHtml(p.displayName)}${p.portName && !p.displayName.includes(p.portName) ? ` (${escapeHtml(p.portName)})` : ''}</button>`).join('') +
+      '<button type="button" data-i="-1">Cancel</button>'
+    : '<p class="muted">No COM ports found. Pair the phone in Windows Bluetooth settings first.</p><button type="button" data-i="-1">OK</button>';
+  box.onclick = async (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    const p = list[Number(b.dataset.i)];
+    box.innerHTML = '';
+    if (p) serial.name = p.portName || p.displayName;
+    await window.ship.serialSelect(p ? { ...p, baud: Number($('serial-baud').value) } : null);
+  };
+});
+
+$('serial-choose').onclick = async () => {
+  if (!navigator.serial) {
+    serialStatus('Serial ports are not supported here');
+    return;
+  }
+  serial.wanted = false;
+  clearTimeout(serial.retry);
+  await closeSerial();
+  try {
+    await navigator.serial.requestPort();
+    serial.wanted = true;
+    serialConnect();
+  } catch {
+    serialStatus('No port chosen');
+  }
+};
+$('serial-stop').onclick = async () => {
+  serial.wanted = false;
+  clearTimeout(serial.retry);
+  await closeSerial();
+  await window.ship.serialForget();
+  serialStatus('Not connected');
+};
+
+(async () => {
+  const s = await window.ship.getSettings();
+  $('serial-baud').value = String(s.serialBaud || 4800);
+  if (s.serialPort) {
+    serial.name = s.serialPort;
+    serial.wanted = true;
+    serialConnect();
+  }
 })();

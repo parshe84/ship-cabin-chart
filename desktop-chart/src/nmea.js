@@ -101,6 +101,13 @@ function parseSentence(raw) {
       }
       return null;
     }
+    case 'GSV': {
+      // Satellites in view, one sentence group per talker (GP, GL, GA, GB/BD, GQ, GI).
+      const inView = parseInt(f[3], 10);
+      if (Number.isNaN(inView)) return null;
+      const talker = f[0].slice(1, 3) === 'BD' ? 'GB' : f[0].slice(1, 3);
+      return { type, valid: true, talker, inView, part: parseInt(f[2], 10) || 1 };
+    }
     case 'MDA': {
       // Meteorological composite: pressure in inches (f[1]) and bar (f[3]).
       const bar = num(f[3]);
