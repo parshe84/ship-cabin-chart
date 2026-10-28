@@ -26,6 +26,7 @@ const osm = L.tileLayer('tilecache://osm/{z}/{x}/{y}.png', {
   minZoom: 9,
   maxZoom: 18,
   className: 'osm-tiles',
+  zIndex: 2,
   attribution: '© OpenStreetMap contributors',
 }).addTo(map);
 const seamarks = L.tileLayer('tilecache://seamark/{z}/{x}/{y}.png', {
@@ -40,7 +41,14 @@ const enc = EncChart.createEncLayer({
   loadCell: (name) => (name.startsWith('OSM_') ? window.ship.loadSeamarks(name) : window.ship.encLoad(name)),
 });
 enc.layer.addTo(map);
-seamarks.setZIndex(4);
+// Fixed stacking: world chart 1, OSM detail 2, sea overlay 3 (depths, TSS above the OSM tiles),
+// seamarks/ENC 4, OpenSeaMap overlay 5.
+seamarks.setZIndex(5);
+const syncOverlay = () => {
+  if (map.hasLayer(osm)) world.overlay.addTo(map);
+  else map.removeLayer(world.overlay);
+};
+syncOverlay();
 const encToggle = L.layerGroup().addTo(map);
 const seamarkToggle = L.layerGroup().addTo(map);
 // Latitude/longitude grid: lines are drawn in the chart tiles, labels along the edges.
@@ -63,7 +71,7 @@ L.control.layers(null, {
   '<span class="lc-enc">▦</span> ENC charts (S-57)': encToggle,
   'OpenStreetMap detail (zoom 9+)': osm,
   'OpenSeaMap online overlay (zoom 9+)': seamarks,
-}, { position: 'topleft' }).addTo(map);
+}, { position: 'topleft', autoZIndex: false }).addTo(map);
 map.on('overlayadd overlayremove', (e) => {
   const on = e.type === 'overlayadd';
   if (e.layer === tssToggle) {
@@ -83,6 +91,10 @@ map.on('overlayadd overlayremove', (e) => {
     window.ship.saveSettings({ seamarksVisible: on });
   }
   if (e.layer === seamarks) window.ship.saveSettings({ openSeaMap: on });
+  if (e.layer === osm) {
+    syncOverlay();
+    window.ship.saveSettings({ osmDetail: on });
+  }
   if (e.layer === gridLabels) {
     world.setGraticule(e.type === 'overlayadd');
     window.ship.saveSettings({ grid: e.type === 'overlayadd' });
@@ -1185,6 +1197,10 @@ map.on('click', (e) => {
   if (s.seamarksVisible === false) map.removeLayer(seamarkToggle);
   // The built-in seamarks replace the online OpenSeaMap overlay, which stays available in the layers menu.
   if (s.openSeaMap) seamarks.addTo(map);
+  if (s.osmDetail === false) {
+    map.removeLayer(osm);
+    syncOverlay();
+  }
   try {
     enc.setBuiltin(JSON.parse(await window.ship.loadSeamarks('index')));
   } catch { /* built without the seamark layer */ }

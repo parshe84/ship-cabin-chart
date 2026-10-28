@@ -330,8 +330,13 @@
       tile.height = size.y * ratio;
       const ctx = tile.getContext('2d');
       ctx.scale(ratio, ratio);
-      ctx.fillStyle = P.depth[0]; // sea surface; deeper bands are drawn on top
-      ctx.fillRect(0, 0, size.x, size.y);
+      // Overlay mode (above the opaque OSM detail tiles): only the sea information, depth tint
+      // cut out of the land, isobaths, traffic schemes, limits and the grid.
+      const overlay = this.options.overlay;
+      if (!overlay) {
+        ctx.fillStyle = P.depth[0]; // sea surface; deeper bands are drawn on top
+        ctx.fillRect(0, 0, size.x, size.y);
+      }
 
       // Zooms deeper than the index: take the ancestor tile and magnify the right part.
       const dz = Math.max(0, coords.z - INDEX_MAX_ZOOM);
@@ -344,6 +349,16 @@
 
       ctx.lineJoin = 'round';
       for (const layer of LAYERS) {
+        if (overlay && layer.name === 'land') {
+          if (useCoast) {
+            ctx.globalCompositeOperation = 'destination-out';
+            this._drawCoast(ctx, 'land', squares, z, x, y, scale, dx, dy);
+            ctx.globalCompositeOperation = 'source-over';
+          }
+          continue;
+        }
+        if (overlay && layer.name !== 'bathymetry' && layer.name !== 'maritime') continue;
+        ctx.globalAlpha = overlay && layer.name === 'bathymetry' ? 0.45 : 1;
         if (useCoast && (layer.name === 'land' || layer.name === 'coastline')) {
           this._drawCoast(ctx, layer.name, squares, z, x, y, scale, dx, dy);
           continue;
@@ -380,6 +395,7 @@
           }
         }
       }
+      ctx.globalAlpha = 1;
       ctx.shadowBlur = 0;
       ctx.setLineDash([]);
       if (showGraticule) this._drawGraticule(ctx, coords, size);
@@ -563,7 +579,8 @@
   function createWorldChart(map, loadLayer, opts = {}) {
     onPortClick = opts.onPortClick || null;
     coast.load = opts.loadLand || null;
-    const chart = new WorldChartLayer();
+    const chart = new WorldChartLayer({ zIndex: 1 });
+    const overlay = new WorldChartLayer({ overlay: true, minZoom: 9, zIndex: 3, attribution: '' });
     const labels = createLabelLayer(map);
 
     const ready = (async () => {
@@ -592,25 +609,29 @@
       labelData.ports = JSON.parse(await loadLayer('ports')).features;
       labelData.places = JSON.parse(await loadLayer('places')).features;
       chart.redraw();
+      overlay.redraw();
       labels.refresh();
     })();
 
     function setVisible(name, on) {
       visible[name] = on;
       chart.redraw();
+      overlay.redraw();
     }
 
     function setGraticule(on) {
       showGraticule = on;
       chart.redraw();
+      overlay.redraw();
     }
 
     function setTheme(name) {
       P = THEMES[name] || THEMES.night;
       chart.redraw();
+      overlay.redraw();
     }
 
-    return { chart, labels, ready, setTheme, setGraticule, setVisible, depthAt, legend };
+    return { chart, overlay, labels, ready, setTheme, setGraticule, setVisible, depthAt, legend };
   }
 
   window.WorldChart = { createWorldChart, DEPTH_LEVELS };

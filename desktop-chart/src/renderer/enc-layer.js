@@ -764,7 +764,7 @@
   }
 
   const EncLayer = L.GridLayer.extend({
-    options: { tileSize: 256, maxZoom: 18, zIndex: 3, attribution: 'Seamarks © OpenStreetMap contributors (ODbL) · ENC: official S-57 charts · not for navigation' },
+    options: { tileSize: 256, maxZoom: 18, zIndex: 4, attribution: 'Seamarks © OpenStreetMap contributors (ODbL) · ENC: official S-57 charts · not for navigation' },
 
     createTile(coords, done) {
       const size = this.getTileSize();
