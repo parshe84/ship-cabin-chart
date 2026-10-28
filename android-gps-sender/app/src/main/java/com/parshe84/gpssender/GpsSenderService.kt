@@ -11,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.bluetooth.BluetoothManager
 import android.location.GnssStatus
 import android.location.Location
 import android.location.LocationListener
@@ -45,11 +46,20 @@ class GpsSenderService : Service(), LocationListener {
         val headingTrue: Float? = null,
         val hasBarometer: Boolean = false,
         val hasCompass: Boolean = false,
+        val sats: List<Satellite> = emptyList(),
+        val wifi: Boolean = true,
+        val bluetooth: Boolean = false,
+        val btClients: List<String> = emptyList(),
+        val btError: String? = null,
+        val lastSentence: String? = null,
+        val fixTime: Long = 0,
     )
 
     companion object {
         const val EXTRA_HOST = "host"
         const val EXTRA_PORT = "port"
+        const val EXTRA_WIFI = "wifi"
+        const val EXTRA_BLUETOOTH = "bluetooth"
         private const val CHANNEL_ID = "gps_sender"
         private const val NOTIFICATION_ID = 1
 
@@ -62,6 +72,9 @@ class GpsSenderService : Service(), LocationListener {
     private var address: InetAddress? = null
     private var port = 10110
     private var satellitesUsed = 0
+    @Volatile private var satellites: List<Satellite> = emptyList()
+    private var wifiOn = true
+    private var bt: BluetoothNmeaServer? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private lateinit var locationManager: LocationManager
@@ -75,6 +88,7 @@ class GpsSenderService : Service(), LocationListener {
             ticks++
             val sb = StringBuilder()
             sensors.headingTrue?.let { sb.append(NmeaBuilder.hdt(it)).append("\r\n") }
+            NmeaBuilder.gsv(satellites).forEach { sb.append(it).append("\r\n") }
             if (ticks % 10 == 1L) sensors.pressureHpa?.let { sb.append(NmeaBuilder.xdrPressure(it)).append("\r\n") }
             if (sb.isNotEmpty()) send(sb.toString(), null)
             _state.value = _state.value.copy(pressureHpa = sensors.pressureHpa, headingTrue = sensors.headingTrue)
@@ -84,8 +98,10 @@ class GpsSenderService : Service(), LocationListener {
 
     private val gnssCallback = object : GnssStatus.Callback() {
         override fun onSatelliteStatusChanged(status: GnssStatus) {
-            satellitesUsed = (0 until status.satelliteCount).count { status.usedInFix(it) }
-            _state.value = _state.value.copy(satellites = satellitesUsed)
+            val sats = Satellites.from(status)
+            satellites = sats
+            satellitesUsed = sats.count { it.used }
+            _state.value = _state.value.copy(satellites = satellitesUsed, sats = sats)
         }
     }
 
@@ -100,35 +116,72 @@ class GpsSenderService : Service(), LocationListener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val host = intent?.getStringExtra(EXTRA_HOST) ?: "255.255.255.255"
         port = intent?.getIntExtra(EXTRA_PORT, 10110) ?: 10110
+        wifiOn = intent?.getBooleanExtra(EXTRA_WIFI, true) ?: true
+        val bluetoothOn = intent?.getBooleanExtra(EXTRA_BLUETOOTH, false) ?: false
 
         ServiceCompat.startForeground(
-            this, NOTIFICATION_ID, buildNotification(getString(R.string.notification_text, "$host:$port")),
+            this, NOTIFICATION_ID, buildNotification(getString(R.string.notification_text, listOfNotNull(
+                "$host:$port".takeIf { wifiOn }, "Bluetooth".takeIf { bluetoothOn },
+            ).joinToString(" + "))),
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0,
         )
 
         acquireLocks()
         _state.value = State(
             running = true,
-            target = "$host:$port",
+            target = if (wifiOn) "$host:$port" else "",
             hasBarometer = sensors.hasBarometer,
             hasCompass = sensors.hasCompass,
+            sats = satellites,
+            satellites = satellitesUsed,
+            wifi = wifiOn,
+            bluetooth = bluetoothOn,
         )
 
         sender.execute {
+            socket?.close()
+            socket = null
+            address = null
+            if (!wifiOn) return@execute
             try {
-                socket?.close()
                 address = InetAddress.getByName(host)
                 socket = DatagramSocket().apply { broadcast = true }
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = getString(R.string.error_network, e.message))
             }
         }
+        if (bluetoothOn) startBluetooth() else stopBluetooth()
 
         startGps()
         sensors.start()
         ticker.removeCallbacks(tick)
         ticker.post(tick)
         return START_REDELIVER_INTENT
+    }
+
+    private fun startBluetooth() {
+        if (bt != null) return
+        val adapter = getSystemService(BluetoothManager::class.java)?.adapter
+        val error = when {
+            adapter == null -> getString(R.string.bt_none)
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED ->
+                getString(R.string.bt_no_permission)
+            !adapter.isEnabled -> getString(R.string.bt_off)
+            else -> null
+        }
+        if (error != null || adapter == null) {
+            _state.value = _state.value.copy(btError = error)
+            return
+        }
+        bt = BluetoothNmeaServer(adapter) { names -> _state.value = _state.value.copy(btClients = names) }.also { it.start() }
+        _state.value = _state.value.copy(btError = null)
+    }
+
+    private fun stopBluetooth() {
+        bt?.stop()
+        bt = null
+        _state.value = _state.value.copy(btClients = emptyList())
     }
 
     @SuppressLint("MissingPermission")
@@ -157,16 +210,27 @@ class GpsSenderService : Service(), LocationListener {
             accuracyMeters = if (location.hasAccuracy()) location.accuracy else null,
         )
         sensors.updateLocation(location)
-        send(NmeaBuilder.build(fix), location)
+        val nmea = NmeaBuilder.build(fix)
+        _state.value = _state.value.copy(lastSentence = nmea.lineSequence().first(), fixTime = System.currentTimeMillis())
+        send(nmea, location)
     }
 
     private fun send(text: String, location: Location?) {
         val data = text.toByteArray(Charsets.US_ASCII)
         sender.execute {
+            bt?.send(data)
             val s = socket
-            val a = address ?: return@execute
+            val a = address
+            if (s == null || a == null) {
+                val btSent = (bt?.clientCount ?: 0) > 0
+                _state.value = _state.value.copy(
+                    lastLocation = location ?: _state.value.lastLocation,
+                    packetsSent = _state.value.packetsSent + if (btSent) 1 else 0,
+                )
+                return@execute
+            }
             try {
-                s?.send(DatagramPacket(data, data.size, a, port))
+                s.send(DatagramPacket(data, data.size, a, port))
                 _state.value = _state.value.copy(
                     lastLocation = location ?: _state.value.lastLocation,
                     packetsSent = _state.value.packetsSent + 1,
@@ -226,6 +290,7 @@ class GpsSenderService : Service(), LocationListener {
 
     override fun onDestroy() {
         ticker.removeCallbacks(tick)
+        stopBluetooth()
         sensors.stop()
         locationManager.removeUpdates(this)
         locationManager.unregisterGnssStatusCallback(gnssCallback)

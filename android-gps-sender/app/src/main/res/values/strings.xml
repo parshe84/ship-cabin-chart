@@ -24,4 +24,34 @@
     <string name="sensors_none">No barometer or compass in this phone</string>
     <string name="sensor_pressure">Barometer %1$.1f hPa</string>
     <string name="sensor_heading">Compass %1$03.0f°T</string>
+    <string name="satellites_title">SATELLITES</string>
+    <string name="sat_caption">used in fix / in view · %1$d systems</string>
+    <string name="sat_caption_off">Press Start to see the satellites</string>
+    <string name="sat_searching">Searching… keep the phone at the window</string>
+    <string name="signal_title">SIGNAL STRENGTH, dB-Hz</string>
+    <string name="signal_hint">Solid = used in the position. 40+ strong · 20–40 good · below 20 weak. The phone uses every system its GNSS chip supports: GPS (NAVSTAR), GLONASS, Galileo, BeiDou, QZSS, NavIC.</string>
+    <string name="position_title">POSITION</string>
+    <string name="fix_info">±%1$.0f m · fix %2$s ago</string>
+    <string name="wifi_switch">Send over Wi-Fi</string>
+    <string name="bt_switch">Send over Bluetooth</string>
+    <string name="bt_visible">Make phone visible for pairing</string>
+    <string name="bt_help">Pair once: on the laptop open Windows Settings → Bluetooth &amp; devices → Add device → this phone. Then in Ship Cabin Chart → Setup → Bluetooth choose the phone\'s COM port.</string>
+    <string name="bt_waiting">Waiting for the laptop to connect…</string>
+    <string name="bt_connected">Connected: %1$s</string>
+    <string name="bt_none">This phone has no Bluetooth</string>
+    <string name="bt_off">Bluetooth is off</string>
+    <string name="bt_no_permission">Bluetooth permission is needed</string>
+    <string name="need_bt">Allow Bluetooth to send to the laptop without Wi-Fi</string>
+    <string name="banner_permission">Cabin GPS needs location access to read the satellites.</string>
+    <string name="banner_permission_settings">Location access was denied. Allow it in the app settings.</string>
+    <string name="banner_location_off">Location is turned off on this phone.</string>
+    <string name="banner_bt_off">Bluetooth is turned off.</string>
+    <string name="action_allow">Allow</string>
+    <string name="action_settings">Settings</string>
+    <string name="action_turn_on">Turn on</string>
+    <string name="pill_off">OFF</string>
+    <string name="pill_search">SEARCHING</string>
+    <string name="pill_fix">● SENDING</string>
+    <string name="sending_bt">Sending over Bluetooth · packets: %1$d</string>
+    <string name="last_nmea">Last sent: %1$s</string>
 </resources>

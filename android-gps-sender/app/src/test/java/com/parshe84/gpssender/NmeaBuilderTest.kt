@@ -51,4 +51,38 @@ class NmeaBuilderTest {
         assertTrue(NmeaBuilder.hdt(-10f).startsWith("\$HCHDT,350.0,T*"))
         assertTrue(NmeaBuilder.hdt(370f).startsWith("\$HCHDT,10.0,T*"))
     }
+
+    @Test
+    fun northEastPositionKeepsHemispheres() {
+        // Zaporizhzhia: 47.8388 N, 35.1396 E
+        val ne = fix.copy(latitude = 47.8388, longitude = 35.1396)
+        val rmc = NmeaBuilder.rmc(ne)
+        assertTrue(rmc, rmc.contains(",4750.3280,N,03508.3760,E,"))
+        val gga = NmeaBuilder.gga(ne)
+        assertTrue(gga, gga.contains(",4750.3280,N,03508.3760,E,"))
+    }
+
+    @Test
+    fun gsvGroupsSatellitesBySystem() {
+        val sats = listOf(
+            Satellite(GnssSystem.GPS, 5, 41.5f, 63f, 120f, true),
+            Satellite(GnssSystem.GPS, 12, 30f, 20f, 300f, false),
+            Satellite(GnssSystem.GLONASS, 7, 35f, 45f, 10f, true),
+            Satellite(GnssSystem.GALILEO, 3, 0f, 5f, 200f, false),
+            Satellite(GnssSystem.GLONASS, 100, 20f, 10f, 10f, false), // unknown slot: skipped
+        )
+        val gsv = NmeaBuilder.gsv(sats)
+        assertEquals(3, gsv.size)
+        assertTrue(gsv[0], gsv[0].startsWith("\$GPGSV,1,1,02,05,63,120,41,12,20,300,30*"))
+        assertTrue(gsv[1], gsv[1].startsWith("\$GLGSV,1,1,01,71,45,010,35*"))
+        assertTrue(gsv[2], gsv[2].startsWith("\$GAGSV,1,1,01,03,05,200,*"))
+    }
+
+    @Test
+    fun gsvSplitsIntoSentencesOfFour() {
+        val sats = (1..9).map { Satellite(GnssSystem.BEIDOU, it, 30f, 30f, 30f, true) }
+        val gsv = NmeaBuilder.gsv(sats)
+        assertEquals(3, gsv.size)
+        assertTrue(gsv[2], gsv[2].startsWith("\$GBGSV,3,3,09,09,30,030,30*"))
+    }
 }

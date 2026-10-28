@@ -55,6 +55,37 @@ object NmeaBuilder {
         return sentence("GPVTG,$cog,T,,M,$kn,N,$kmh,K,A")
     }
 
+    /**
+     * Satellites in view (GSV), one group per system with its own talker (GP, GL, GA, GB, GQ, GI),
+     * up to four satellites per sentence. PRNs follow NMEA: GLONASS 65-96, SBAS 33-64, QZSS 1-10.
+     */
+    fun gsv(sats: List<Satellite>): List<String> {
+        val out = mutableListOf<String>()
+        sats.filter { nmeaPrn(it) != null }.groupBy { it.system.talker }.forEach { (talker, group) ->
+            val list = group.sortedBy { nmeaPrn(it) }.take(36)
+            val total = (list.size + 3) / 4
+            list.chunked(4).forEachIndexed { i, chunk ->
+                val fields = chunk.joinToString(",") { s ->
+                    val elev = s.elevation.toInt().coerceIn(0, 90)
+                    val az = ((s.azimuth.toInt() % 360) + 360) % 360
+                    val snr = if (s.cn0 > 0) String.format(Locale.US, "%02d", s.cn0.toInt().coerceAtMost(99)) else ""
+                    String.format(Locale.US, "%02d,%02d,%03d,%s", nmeaPrn(s), elev, az, snr)
+                }
+                out += sentence("${talker}GSV,$total,${i + 1},${String.format(Locale.US, "%02d", list.size)},$fields")
+            }
+        }
+        return out
+    }
+
+    fun nmeaPrn(s: Satellite): Int? = when (s.system) {
+        GnssSystem.GPS -> s.svid.takeIf { it in 1..32 }
+        GnssSystem.SBAS -> (s.svid - 87).takeIf { it in 33..64 } // Android reports SBAS as PRN 120-151
+        GnssSystem.GLONASS -> (s.svid + 64).takeIf { s.svid in 1..32 } // slot number; unknown slots (FCN) skipped
+        GnssSystem.QZSS -> (s.svid - 192).takeIf { it in 1..10 }
+        GnssSystem.GALILEO, GnssSystem.BEIDOU, GnssSystem.NAVIC -> s.svid.takeIf { it in 1..99 }
+        GnssSystem.OTHER -> null
+    }
+
     /** Barometric pressure as a transducer reading, in bar (1013.25 hPa -> 1.01325). */
     fun xdrPressure(hPa: Float): String =
         sentence("IIXDR,P,${fmt("%.5f", hPa.toDouble() / 1000.0)},B,Barometer")
